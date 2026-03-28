@@ -114,54 +114,113 @@ export default function Home() {
 
       {/* Problem Section */}
       <section id="problem" className="py-24 lg:py-32 bg-[#fafafa]">
-        <div className="container-custom">
-          <div className="max-w-3xl mb-16">
-            <p className="text-[#4C7060] text-sm font-medium tracking-wide uppercase mb-4">
-              The Problem
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-medium tracking-tight mb-6 text-[#1a1a1a]">
-              Enterprises are scaling AI without visibility into environmental impact
-            </h2>
-            <p className="text-[#555] text-lg">
-              Leadership teams are making AI investment decisions in the dark. No carbon data. No water metrics. No license utilization insights.
-            </p>
-          </div>
+        <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {[
-              {
-                icon: <BarChart3 className="w-5 h-5" strokeWidth={1.5} />,
-                title: 'Rapid AI adoption with zero measurement',
-                description: 'Companies deploy AI across departments without tracking environmental footprint or resource consumption.'
-              },
-              {
-                icon: <Droplets className="w-5 h-5" strokeWidth={1.5} />,
-                title: 'No visibility into AI carbon and water usage',
-                description: 'Leadership has no dashboards showing the real environmental cost of their AI infrastructure.'
-              },
-              {
-                icon: <Zap className="w-5 h-5" strokeWidth={1.5} />,
-                title: 'Overpaying for underutilized AI licenses',
-                description: 'Flat enterprise licenses create hidden waste. Teams pay for capacity they don\'t use.'
-              },
-              {
-                icon: <AlertTriangle className="w-5 h-5" strokeWidth={1.5} />,
-                title: 'ESG and board reporting gaps',
-                description: 'Sustainability teams lack the data they need for AI governance and regulatory compliance.'
-              }
-            ].map((item, index) => (
-              <div
-                key={index}
-                className={`bg-white border border-[#e5e5e5] p-6 rounded-lg card-hover fade-in-up stagger-${index + 1}`}
+            {/* Left: Text */}
+            <div className="px-10 lg:px-20">
+              <p className="text-[#4C7060] text-lg font-medium tracking-widest uppercase mb-6">
+                The Visibility Gap
+              </p>
+              <h2 className="text-5xl sm:text-6xl font-medium tracking-tight mb-10 text-[#1a1a1a] leading-[1.15]">
+                Leadership teams are making AI investment decisions in the dark.
+                <span className="highlight-cycle mt-4" style={{ animationDelay: '0s' }}>No carbon data.</span>
+                <span className="highlight-cycle" style={{ animationDelay: '2s' }}>No water metrics.</span>
+                <span className="highlight-cycle" style={{ animationDelay: '4s' }}>No license utilization insights.</span>
+              </h2>
+
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 border border-[#4C7060] text-[#4C7060] hover:bg-[#4C7060] hover:text-white transition-colors px-6 py-3 rounded-md text-sm font-medium"
               >
-                <div className="w-10 h-10 rounded-lg bg-[#f0f5f3] flex items-center justify-center mb-4 text-[#4C7060]">
-                  {item.icon}
+                Request a demo <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            {/* Right: Radar visual */}
+            <div className="flex flex-col gap-4">
+              {/* Radar screen + status card overlay */}
+              <div className="relative flex justify-center">
+                <svg viewBox="0 0 300 300" className="w-200 h-200">
+                  <defs>
+                    <linearGradient id="sweepGradient" x1="150" y1="150" x2="274" y2="78" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor="#86efac" stopOpacity="0" />
+                      <stop offset="70%" stopColor="#86efac" stopOpacity="0.15" />
+                      <stop offset="100%" stopColor="#86efac" stopOpacity="0.45" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Crosshair lines */}
+                  <line x1="5" y1="150" x2="295" y2="150" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+                  <line x1="150" y1="5" x2="150" y2="295" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+                  <line x1="47" y1="47" x2="253" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
+                  <line x1="253" y1="47" x2="47" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
+
+                  {/* Concentric rings */}
+                  {[36, 72, 108, 144].map(r => (
+                    <circle key={r} cx="150" cy="150" r={r} fill="none" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+                  ))}
+                  <circle cx="150" cy="150" r="145" fill="none" stroke="#4C7060" strokeOpacity="0.25" strokeWidth="1" />
+
+                  {/* Rotating sweep */}
+                  <g>
+                    <animateTransform
+                      attributeName="transform"
+                      type="rotate"
+                      from="0 150 150"
+                      to="360 150 150"
+                      dur="8s"
+                      repeatCount="indefinite"
+                    />
+                    <path d="M150,150 L150,6 A144,144 0 0,1 274.6,78 Z" fill="url(#sweepGradient)" />
+                    <line x1="150" y1="150" x2="150" y2="6" stroke="#86efac" strokeOpacity="0.2" strokeWidth="1" />
+                  </g>
+
+                  {/* Blip 1 — appears at ~48° into sweep */}
+                  <g>
+                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.13;0.14;0.49;1" dur="8s" repeatCount="indefinite" />
+                    <circle cx="208" cy="98" r="4" fill="#ef4444" />
+                    <text x="202" y="90" fill="#ef4444" fontSize="8" fontFamily="monospace" textAnchor="end">DATA_ERROR: NULL</text>
+                  </g>
+
+                  {/* Blip 2 — appears at ~230° into sweep */}
+                  <g>
+                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.636;0.646;0.986;1" dur="8s" repeatCount="indefinite" />
+                    <circle cx="92" cy="198" r="3" fill="#60a5fa" />
+                    <text x="86" y="210" fill="#60a5fa" fontSize="8" fontFamily="monospace" textAnchor="end">WATER_INDEX: NA</text>
+                  </g>
+
+                  {/* Blip 3 — appears at ~130° into sweep */}
+                  <g>
+                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.362;0.372;0.722;1" dur="8s" repeatCount="indefinite" />
+                    <circle cx="215" cy="205" r="4" fill="#f59e0b" />
+                    <text x="209" y="216" fill="#f59e0b" fontSize="8" fontFamily="monospace" textAnchor="end">CARBON: UNKNOWN</text>
+                  </g>
+
+                  {/* Blip 4 — appears at ~311° into sweep, wraps fade into next cycle */}
+                  <g>
+                    <animate attributeName="opacity" values="0.45;0;0;1;0.45" keyTimes="0;0.22;0.864;0.874;1" dur="8s" repeatCount="indefinite" />
+                    <circle cx="75" cy="85" r="3" fill="#ef4444" />
+                    <text x="81" y="82" fill="#ef4444" fontSize="8" fontFamily="monospace">ESG: NO_DATA</text>
+                  </g>
+                </svg>
+
+                {/* Status card — anchored to bottom-left of radar */}
+                <div className="absolute bottom-[14%] left-[2%] bg-white border border-[#e5e5e5] rounded-lg p-5 card-hover w-72">
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-[#888] text-xs font-mono tracking-widest">SYSTEM_STATUS</span>
+                    <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+                  </div>
+                  <div className="w-full h-1 bg-[#f0f0f0] rounded-full overflow-hidden mb-3">
+                    <div className="h-full bg-red-400 rounded-full" style={{ width: '15%' }} />
+                  </div>
+                  <p className="text-xs font-mono">
+                    <span className="text-[#888]">Visibility Index: </span>
+                    <span className="text-red-500 font-semibold">CRITICAL</span>
+                  </p>
                 </div>
-                <h3 className="text-lg font-medium mb-2 text-[#1a1a1a]">{item.title}</h3>
-                <p className="text-[#666] text-sm leading-relaxed">{item.description}</p>
               </div>
-            ))}
-          </div>
+            </div>
+
         </div>
       </section>
 

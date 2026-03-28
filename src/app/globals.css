@@ -48,6 +48,27 @@
   }
 }
 
+@keyframes text-highlight {
+  0%    { background-size: 0% 100%; background-position: left center; }
+  15%   { background-size: 100% 100%; background-position: left center; }
+  28%   { background-size: 100% 100%; background-position: left center; }
+  44%   { background-size: 0% 100%; background-position: left center; }
+  100%  { background-size: 0% 100%; background-position: left center; }
+}
+
+.highlight-cycle {
+  display: block;
+  width: fit-content;
+  background-image: linear-gradient(#fecaca, #fecaca);
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  background-position: left center;
+  animation: text-highlight 6s infinite both;
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin: 0 -8px;
+}
+
 /* Custom component classes */
 .grid-texture {
   background-image:
@@ -194,6 +215,21 @@
   .container-custom {
     padding: 0 64px;
   }
+}
+
+/* Radar animations */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes radar-blip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+.radar-blip {
+  animation: radar-blip 2s ease-in-out infinite;
 }
 
 .flow-lines {
