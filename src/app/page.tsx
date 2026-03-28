@@ -82,7 +82,7 @@ export default function Home() {
         <div className="flex items-center gap-8 w-full">
           {/* Left: Text */}
           <div className="pl-20 lg:pl-28 shrink-0 w-[48%]">
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
+            <h1 className="text-5xl sm:text-6xl lg:text-[5.75rem] font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
               Measure the environmental cost of your enterprise AI
             </h1>
 
@@ -104,7 +104,7 @@ export default function Home() {
           </div>
 
           {/* Right: Dashboard mockup — flush to right edge */}
-          <div className="flex-1 fade-in-up animation-delay-200 flex justify-center items-center px-8">
+          <div className="flex-1 fade-in-up animation-delay-200 flex justify-center items-center pl-0 pr-12">
             <div className="dashboard-shadow rounded-tl-lg rounded-tr-lg overflow-hidden border-t border-l border-r border-white/10 w-full">
               <ExecutiveReport />
             </div>
