@@ -35,6 +35,10 @@ export interface UsageAnalysisResult {
 
 type RawUsageRecord = Omit<NormalizedUsage, 'behaviorCluster'>
 
+interface UsageAnalystOptions {
+  demoRunIndex?: number
+}
+
 function minDate(left: string | null, right: string | null) {
   if (!left) return right
   if (!right) return left
@@ -47,7 +51,10 @@ function maxDate(left: string | null, right: string | null) {
   return left > right ? left : right
 }
 
-export async function runUsageAnalyst(integrations: IntegrationRecord[]): Promise<UsageAnalysisResult> {
+export async function runUsageAnalyst(
+  integrations: IntegrationRecord[],
+  { demoRunIndex = 1 }: UsageAnalystOptions = {}
+): Promise<UsageAnalysisResult> {
   const allUsage: NormalizedUsage[] = []
   const providerStatus: ProviderAnalysisStatus[] = []
   const dailyRequestMap = new Map<string, number>()
@@ -59,7 +66,7 @@ export async function runUsageAnalyst(integrations: IntegrationRecord[]): Promis
   for (const integration of integrations.filter((record) => record.provider === 'openai')) {
     try {
       const freshIntegration = await ensureFreshIntegration(integration)
-      const usage = await getOpenAIUsage(freshIntegration.access_token)
+      const usage = await getOpenAIUsage(freshIntegration.access_token, 30, demoRunIndex)
 
       allUsage.push(
         ...usage.normalizedUsage.map((record: RawUsageRecord) => ({

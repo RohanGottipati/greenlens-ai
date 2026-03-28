@@ -4,14 +4,19 @@ import DecisionCard from '@/components/dashboard/DecisionCard'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getPreferredReport } from '@/lib/reports/get-preferred-report'
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams?: Promise<{ reportId?: string }>
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const requestedReportId = (await searchParams)?.reportId ?? null
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />

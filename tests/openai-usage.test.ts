@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { aggregateOpenAIUsageBuckets } from '../src/lib/integrations/openai'
+import { getFakeOpenAIUsage } from '../src/lib/demo/fake-data'
 
 test('aggregateOpenAIUsageBuckets groups by model, fills missing days, and preserves chronological order', () => {
   const result = aggregateOpenAIUsageBuckets(
@@ -33,4 +34,17 @@ test('aggregateOpenAIUsageBuckets groups by model, fills missing days, and prese
   assert.equal(result.normalizedUsage.find((usage) => usage.model === 'gpt-4o-2024-08-06')?.totalRequests, 14)
   assert.equal(result.coverageEnd, '2026-03-03')
   assert.equal(result.latestCompleteDay, '2026-03-03')
+})
+
+test('getFakeOpenAIUsage advances the NovaTech demo dataset on later analysis runs', () => {
+  const firstRun = getFakeOpenAIUsage(1)
+  const laterRun = getFakeOpenAIUsage(4)
+
+  const firstRun4o = firstRun.normalizedUsage.find((usage) => usage.model === 'gpt-4o-2024-08-06')
+  const laterRun4o = laterRun.normalizedUsage.find((usage) => usage.model === 'gpt-4o-2024-08-06')
+
+  assert.ok(firstRun4o)
+  assert.ok(laterRun4o)
+  assert.ok(laterRun4o.totalRequests > firstRun4o.totalRequests)
+  assert.ok(laterRun.dailyRequestCounts.at(-1)! > firstRun.dailyRequestCounts.at(-1)!)
 })

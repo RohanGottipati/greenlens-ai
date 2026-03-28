@@ -11,6 +11,53 @@
 export const DEMO_SENTINEL_OPENAI = 'DEMO_NOVATECH_OPENAI'
 export const DEMO_SENTINEL_MICROSOFT = 'DEMO_NOVATECH_MICROSOFT'
 
+function getDemoRunPhase(demoRunIndex: number) {
+  if (demoRunIndex <= 1) return 0
+  return (demoRunIndex - 1) % 6
+}
+
+function applyRequestDelta<T extends {
+  totalRequests: number
+  totalInputTokens: number
+  totalOutputTokens: number
+}>(record: T, requestDelta: number): T {
+  if (requestDelta <= 0 || record.totalRequests <= 0) {
+    return record
+  }
+
+  const avgInputTokens = record.totalInputTokens / record.totalRequests
+  const avgOutputTokens = record.totalOutputTokens / record.totalRequests
+
+  return {
+    ...record,
+    totalRequests: record.totalRequests + requestDelta,
+    totalInputTokens: record.totalInputTokens + Math.round(avgInputTokens * requestDelta),
+    totalOutputTokens: record.totalOutputTokens + Math.round(avgOutputTokens * requestDelta),
+  } as T
+}
+
+function applyTrailingDailyDelta(dailyRequestCounts: number[], totalDelta: number) {
+  if (totalDelta <= 0) {
+    return dailyRequestCounts
+  }
+
+  const weights = [0.17, 0.19, 0.2, 0.21, 0.23]
+  const nextCounts = [...dailyRequestCounts]
+  let appliedDelta = 0
+
+  weights.forEach((weight, index) => {
+    const bucketDelta = index === weights.length - 1
+      ? totalDelta - appliedDelta
+      : Math.round(totalDelta * weight)
+    const targetIndex = nextCounts.length - weights.length + index
+
+    nextCounts[targetIndex] += bucketDelta
+    appliedDelta += bucketDelta
+  })
+
+  return nextCounts
+}
+
 // ---------------------------------------------------------------------------
 // OpenAI usage — 30-day window
 // NovaTech Solutions: ~1,200-person technology company.
@@ -19,7 +66,13 @@ export const DEMO_SENTINEL_MICROSOFT = 'DEMO_NOVATECH_MICROSOFT'
 // opportunity worth optimising.
 // ---------------------------------------------------------------------------
 
-export function getFakeOpenAIUsage() {
+export function getFakeOpenAIUsage(demoRunIndex: number = 1) {
+  const demoRunPhase = getDemoRunPhase(demoRunIndex)
+  const gpt4oDelta = demoRunPhase * 150
+  const gpt4oMiniDelta = demoRunPhase * 110
+  const gpt35Delta = demoRunPhase * 60
+  const embeddingDelta = demoRunPhase * 20
+
   const normalizedUsage = [
     {
       model: 'gpt-4o-2024-08-06',
@@ -49,15 +102,26 @@ export function getFakeOpenAIUsage() {
       totalInputTokens: 3_200_000,
       totalOutputTokens: 0,
     },
-  ]
+  ].map((record) => {
+    if (record.model === 'gpt-4o-2024-08-06') {
+      return applyRequestDelta(record, gpt4oDelta)
+    }
+    if (record.model === 'gpt-4o-mini') {
+      return applyRequestDelta(record, gpt4oMiniDelta)
+    }
+    if (record.model === 'gpt-3.5-turbo') {
+      return applyRequestDelta(record, gpt35Delta)
+    }
+    return applyRequestDelta(record, embeddingDelta)
+  })
 
-  const dailyRequestCounts = [
+  const dailyRequestCounts = applyTrailingDailyDelta([
     778, 814,
     212, 238, 703, 739, 751, 797, 823,
     241, 264, 718, 762, 788, 830, 851,
     229, 256, 745, 808, 774, 819, 836,
     217, 243, 761, 827, 793, 848, 812,
-  ]
+  ], gpt4oDelta + gpt4oMiniDelta + gpt35Delta + embeddingDelta)
 
   const today = new Date()
   const utcStartOfToday = new Date(Date.UTC(

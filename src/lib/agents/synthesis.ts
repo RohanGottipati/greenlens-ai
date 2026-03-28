@@ -55,7 +55,7 @@ function parseMissingReportsColumn(message: string) {
   return match?.[1] ?? null
 }
 
-async function insertReportWithFallback(
+export async function upsertReportWithFallback(
   supabase: ReturnType<typeof createAdminClient>,
   payload: Record<string, unknown>
 ) {
@@ -65,13 +65,17 @@ async function insertReportWithFallback(
 
   while (true) {
     if (++attempts > 20) {
-      throw new Error(`Synthesis failed: exceeded 20 insert attempts. Stripped columns: ${strippedColumns.join(', ')}`)
+      throw new Error(`Synthesis failed: exceeded 20 upsert attempts. Stripped columns: ${strippedColumns.join(', ')}`)
     }
-    const { data: report, error } = await supabase.from('reports').insert(nextPayload).select().single()
+    const { data: report, error } = await supabase
+      .from('reports')
+      .upsert(nextPayload, { onConflict: 'job_id' })
+      .select()
+      .single()
 
     if (!error) {
       if (strippedColumns.length > 0) {
-        console.warn('Reports schema is missing columns; inserted report without:', strippedColumns.join(', '))
+        console.warn('Reports schema is missing columns; upserted report without:', strippedColumns.join(', '))
       }
       return report
     }
@@ -202,6 +206,6 @@ export async function runSynthesis(
     }
   }
 
-  const report = await insertReportWithFallback(supabase, reportPayload)
+  const report = await upsertReportWithFallback(supabase, reportPayload)
   return report.id
 }

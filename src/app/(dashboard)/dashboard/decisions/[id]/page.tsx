@@ -2,21 +2,26 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getPreferredReport } from '@/lib/reports/get-preferred-report'
 
 interface DecisionDetailProps {
   params: Promise<{ id: string }>
+  searchParams?: Promise<{ reportId?: string }>
 }
 
-export default async function DecisionDetailPage({ params }: DecisionDetailProps) {
+export default async function DecisionDetailPage({ params, searchParams }: DecisionDetailProps) {
   const { id } = await params
+  const requestedReportId = (await searchParams)?.reportId ?? null
   const index = parseInt(id, 10) - 1
+  const backHref = requestedReportId
+    ? `/dashboard/decisions?reportId=${encodeURIComponent(requestedReportId)}`
+    : '/dashboard/decisions'
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).single()
+  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -29,7 +34,7 @@ export default async function DecisionDetailPage({ params }: DecisionDetailProps
   if (!decision) {
     return (
       <div className="p-8 max-w-3xl mx-auto">
-        <Link href="/dashboard/decisions" className="text-gray-400 hover:text-white text-sm mb-8 inline-block">
+        <Link href={backHref} className="text-gray-400 hover:text-white text-sm mb-8 inline-block">
           ← Back to decisions
         </Link>
         <p className="text-gray-400">Decision not found.</p>
@@ -39,7 +44,7 @@ export default async function DecisionDetailPage({ params }: DecisionDetailProps
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <Link href="/dashboard/decisions" className="text-gray-400 hover:text-white text-sm mb-8 inline-block">
+      <Link href={backHref} className="text-gray-400 hover:text-white text-sm mb-8 inline-block">
         ← Back to decisions
       </Link>
 

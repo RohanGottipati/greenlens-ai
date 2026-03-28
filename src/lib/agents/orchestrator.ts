@@ -6,14 +6,66 @@ import {
   buildUnsupportedProviderStatus,
   deriveDataFreshness,
 } from '@/lib/analysis/provider-status'
+import {
+  getNextPipelineStep,
+  isPipelineStep,
+  resolveNextPipelineStep,
+  type PipelineStep,
+} from '@/lib/analysis/pipeline-steps'
+import {
+  ANALYSIS_LEASE_TTL_MS,
+  ANALYSIS_MAX_AGE_TIMEOUT_MESSAGE,
+  hasAnalysisJobExceededMaxAge,
+  isClaimableActiveAnalysisJob,
+  type PersistedAnalysisJob,
+} from '@/lib/analysis/state'
 import { calculateCarbon } from '@/lib/calculations/carbon'
 import type { IntegrationRecord } from '@/lib/integrations/types'
-import { runUsageAnalyst } from './usage-analyst'
+import { runUsageAnalyst, type UsageAnalysisResult } from './usage-analyst'
 import { runCarbonWaterAccountant } from './carbon-water-accountant'
-import { runLicenseIntelligence } from './license-intelligence'
+import {
+  runLicenseIntelligence,
+  type LicenseIntelligenceResult,
+} from './license-intelligence'
 import { runStrategicTranslator, runStrategicTranslatorGemini } from './strategic-translator'
 import { runSynthesis } from './synthesis'
-import { runStatAnalysis } from '@/lib/analysis/run-stat-analysis'
+import {
+  runStatAnalysis,
+  type StatAnalysisResult,
+} from '@/lib/analysis/run-stat-analysis'
+
+type StatAnalysisOutput = StatAnalysisResult | { error: string }
+type CarbonWaterResult = Awaited<ReturnType<typeof runCarbonWaterAccountant>>
+type SavedOutputStep = Exclude<PipelineStep, 'synthesis'>
+type SavedPipelineOutputs = Partial<Record<SavedOutputStep, unknown>>
+
+interface PersistedAnalysisJobRow extends PersistedAnalysisJob {
+  company_id: string | null
+  backboard_thread_id: string | null
+}
+
+interface AgentOutputRow {
+  agent_name: string
+  output: unknown
+}
+
+interface LoadedJobArtifacts {
+  completedAgents: string[]
+  outputRows: AgentOutputRow[]
+  outputs: SavedPipelineOutputs
+  reportId: string | null
+}
+
+interface ClaimedJobLease {
+  job: PersistedAnalysisJobRow
+  leaseExpiresAt: string
+  step: PipelineStep
+}
+
+interface StepExecutionResult {
+  output?: unknown
+  reportId?: string | null
+}
 
 function throwIfSupabaseError(error: PostgrestError | null, context: string) {
   if (error) {
@@ -21,10 +73,544 @@ function throwIfSupabaseError(error: PostgrestError | null, context: string) {
   }
 }
 
-export async function runPipeline(jobId: string, companyId: string) {
+function mapSavedOutputs(rows: AgentOutputRow[]): SavedPipelineOutputs {
+  const outputs: SavedPipelineOutputs = {}
+
+  for (const row of rows) {
+    if (!isPipelineStep(row.agent_name) || row.agent_name === 'synthesis') {
+      continue
+    }
+
+    outputs[row.agent_name] = row.output
+  }
+
+  return outputs
+}
+
+function collectCompletedAgents(rows: AgentOutputRow[]) {
+  return rows
+    .map((row) => row.agent_name)
+    .filter((agentName): agentName is SavedOutputStep =>
+      isPipelineStep(agentName) && agentName !== 'synthesis'
+    )
+}
+
+function requireOutput<T>(outputs: SavedPipelineOutputs, step: SavedOutputStep): T {
+  const output = outputs[step]
+  if (!output) {
+    throw new Error(`Missing ${step} output while resuming the analysis pipeline.`)
+  }
+
+  return output as T
+}
+
+export async function upsertAgentOutput(
+  supabase: ReturnType<typeof createAdminClient>,
+  jobId: string,
+  agentName: SavedOutputStep,
+  output: unknown
+) {
+  const { error } = await supabase
+    .from('agent_outputs')
+    .upsert(
+      { job_id: jobId, agent_name: agentName, output },
+      { onConflict: 'job_id,agent_name' }
+    )
+
+  throwIfSupabaseError(error, `Failed to persist ${agentName} output for job ${jobId}`)
+}
+
+async function loadJobAndArtifacts(
+  supabase: ReturnType<typeof createAdminClient>,
+  jobId: string
+) {
+  const [{ data: job, error: jobError }, { data: outputRows, error: outputsError }, { data: report, error: reportError }] = await Promise.all([
+    supabase
+      .from('analysis_jobs')
+      .select('id, company_id, status, current_agent, error_message, created_at, started_at, completed_at, backboard_thread_id, lease_expires_at, last_progress_at')
+      .eq('id', jobId)
+      .maybeSingle(),
+    supabase
+      .from('agent_outputs')
+      .select('agent_name, output')
+      .eq('job_id', jobId),
+    supabase
+      .from('reports')
+      .select('id')
+      .eq('job_id', jobId)
+      .maybeSingle(),
+  ])
+
+  throwIfSupabaseError(jobError, `Failed to load analysis job ${jobId}`)
+  throwIfSupabaseError(outputsError, `Failed to load agent outputs for job ${jobId}`)
+  throwIfSupabaseError(reportError, `Failed to load report for job ${jobId}`)
+
+  return {
+    job: (job ?? null) as PersistedAnalysisJobRow | null,
+    artifacts: {
+      completedAgents: collectCompletedAgents((outputRows ?? []) as AgentOutputRow[]),
+      outputRows: (outputRows ?? []) as AgentOutputRow[],
+      outputs: mapSavedOutputs((outputRows ?? []) as AgentOutputRow[]),
+      reportId: report?.id ?? null,
+    } satisfies LoadedJobArtifacts,
+  }
+}
+
+async function claimJobLease(
+  supabase: ReturnType<typeof createAdminClient>,
+  job: PersistedAnalysisJobRow,
+  step: PipelineStep
+) {
+  const nowIso = new Date().toISOString()
+  const leaseExpiresAt = new Date(Date.now() + ANALYSIS_LEASE_TTL_MS).toISOString()
+
+  let query = supabase
+    .from('analysis_jobs')
+    .update({
+      status: 'running',
+      current_agent: step,
+      started_at: job.started_at ?? nowIso,
+      lease_expires_at: leaseExpiresAt,
+      last_progress_at: nowIso,
+      error_message: null,
+    })
+    .eq('id', job.id)
+    .eq('status', job.status)
+
+  query = job.current_agent == null
+    ? query.is('current_agent', null)
+    : query.eq('current_agent', job.current_agent)
+
+  query = job.lease_expires_at == null
+    ? query.is('lease_expires_at', null)
+    : query.eq('lease_expires_at', job.lease_expires_at)
+
+  const { data, error } = await query
+    .select('id, company_id, status, current_agent, error_message, created_at, started_at, completed_at, backboard_thread_id, lease_expires_at, last_progress_at')
+    .maybeSingle()
+
+  throwIfSupabaseError(error, `Failed to claim analysis job ${job.id}`)
+
+  if (!data) {
+    return null
+  }
+
+  return {
+    job: data as PersistedAnalysisJobRow,
+    leaseExpiresAt,
+    step,
+  } satisfies ClaimedJobLease
+}
+
+async function advanceJobAfterStep(
+  supabase: ReturnType<typeof createAdminClient>,
+  claim: ClaimedJobLease,
+  nextStep: PipelineStep | null
+) {
+  const updatePayload = nextStep
+    ? {
+        status: 'pending',
+        current_agent: nextStep,
+        lease_expires_at: null,
+        last_progress_at: new Date().toISOString(),
+        error_message: null,
+      }
+    : {
+        status: 'complete',
+        current_agent: null,
+        lease_expires_at: null,
+        completed_at: new Date().toISOString(),
+        last_progress_at: new Date().toISOString(),
+        error_message: null,
+      }
+
+  const { data, error } = await supabase
+    .from('analysis_jobs')
+    .update(updatePayload)
+    .eq('id', claim.job.id)
+    .eq('status', 'running')
+    .eq('current_agent', claim.step)
+    .eq('lease_expires_at', claim.leaseExpiresAt)
+    .select('id')
+    .maybeSingle()
+
+  throwIfSupabaseError(error, `Failed to advance analysis job ${claim.job.id}`)
+  return Boolean(data?.id)
+}
+
+async function markJobFailed(
+  supabase: ReturnType<typeof createAdminClient>,
+  jobId: string,
+  errorMessage: string,
+  claim?: ClaimedJobLease | null
+) {
+  let query = supabase
+    .from('analysis_jobs')
+    .update({
+      status: 'failed',
+      current_agent: null,
+      lease_expires_at: null,
+      error_message: errorMessage,
+      completed_at: new Date().toISOString(),
+      last_progress_at: new Date().toISOString(),
+    })
+    .eq('id', jobId)
+
+  if (claim) {
+    query = query
+      .eq('status', 'running')
+      .eq('current_agent', claim.step)
+      .eq('lease_expires_at', claim.leaseExpiresAt)
+  } else {
+    query = query.in('status', ['pending', 'running', 'complete'])
+  }
+
+  const { error } = await query
+  throwIfSupabaseError(error, `Failed to mark analysis job ${jobId} as failed`)
+}
+
+async function getActiveIntegrations(
+  supabase: ReturnType<typeof createAdminClient>,
+  companyId: string
+) {
+  const { data, error } = await supabase
+    .from('integrations')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+
+  throwIfSupabaseError(error, `Failed to load integrations for company ${companyId}`)
+  return (data ?? []) as IntegrationRecord[]
+}
+
+async function getCompany(
+  supabase: ReturnType<typeof createAdminClient>,
+  companyId: string
+) {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('*')
+    .eq('id', companyId)
+    .single()
+
+  throwIfSupabaseError(error, `Failed to load company ${companyId}`)
+  return data
+}
+
+async function getCompanyAnalysisRunCount(
+  supabase: ReturnType<typeof createAdminClient>,
+  companyId: string
+) {
+  const { count, error } = await supabase
+    .from('analysis_jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+
+  throwIfSupabaseError(error, `Failed to count analysis runs for company ${companyId}`)
+  return count ?? 1
+}
+
+async function seedBackboardThread(
+  threadId: string,
+  outputs: SavedPipelineOutputs
+) {
+  const orderedSeedSteps: SavedOutputStep[] = [
+    'usage_analyst',
+    'stat_analysis',
+    'carbon_water_accountant',
+    'license_intelligence',
+  ]
+
+  for (const step of orderedSeedSteps) {
+    const output = outputs[step]
+    if (!output) continue
+
+    if (step === 'stat_analysis') {
+      await backboard.sendMessage(threadId, JSON.stringify({
+        event: 'stat_analysis_complete',
+        findings: output,
+      }))
+      continue
+    }
+
+    await backboard.sendMessage(threadId, JSON.stringify({
+      event: 'agent_complete',
+      agent: step,
+      findings: output,
+    }))
+  }
+}
+
+async function prepareStrategicTranslatorThread(
+  supabase: ReturnType<typeof createAdminClient>,
+  jobId: string,
+  companyId: string,
+  existingThreadId: string | null,
+  outputs: SavedPipelineOutputs,
+  withTimeout: <T>(label: string, promise: Promise<T>, timeoutMs: number) => Promise<T>
+) {
+  if (existingThreadId) {
+    return existingThreadId
+  }
+
+  try {
+    const assistant = await withTimeout(
+      'Backboard setup',
+      backboard.createAssistant(
+        `GreenLens-${companyId}-${jobId}`,
+        `You are the GreenLens analysis pipeline coordinator.
+         You receive structured JSON findings from specialist agents and stat analysis.
+         Store all findings in memory and make them available to subsequent agents.
+         Always respond in valid JSON only. No markdown.`
+      ),
+      10000
+    )
+
+    const thread = await withTimeout(
+      'Backboard thread',
+      backboard.createThread(assistant.assistant_id ?? assistant.id),
+      10000
+    )
+
+    const threadId = thread.thread_id ?? thread.id ?? null
+    if (!threadId) return null
+
+    await withTimeout(
+      'Backboard thread seed',
+      seedBackboardThread(threadId, outputs),
+      10000
+    )
+
+    const { error } = await supabase
+      .from('analysis_jobs')
+      .update({ backboard_thread_id: threadId })
+      .eq('id', jobId)
+
+    throwIfSupabaseError(error, `Failed to persist Backboard thread for job ${jobId}`)
+    return threadId
+  } catch (backboardError: any) {
+    console.warn('Backboard unavailable, running without LLM strategic analysis:', backboardError.message)
+    return null
+  }
+}
+
+async function executePipelineStep(
+  supabase: ReturnType<typeof createAdminClient>,
+  claim: ClaimedJobLease,
+  artifacts: LoadedJobArtifacts,
+  withTimeout: <T>(label: string, promise: Promise<T>, timeoutMs: number) => Promise<T>
+): Promise<StepExecutionResult> {
+  const companyId = claim.job.company_id
+  if (!companyId) {
+    throw new Error(`Analysis job ${claim.job.id} is missing a company_id.`)
+  }
+
+  switch (claim.step) {
+    case 'usage_analyst': {
+      const integrations = await getActiveIntegrations(supabase, companyId)
+      const demoRunIndex = await getCompanyAnalysisRunCount(supabase, companyId)
+      const usageResult = await withTimeout(
+        'Usage analyst',
+        runUsageAnalyst(integrations, { demoRunIndex }),
+        20000
+      )
+      return { output: usageResult }
+    }
+
+    case 'stat_analysis': {
+      const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
+      const company = await getCompany(supabase, companyId)
+      const precomputedCarbon = await withTimeout(
+        'Carbon baseline',
+        calculateCarbon(usageResult.normalizedUsage),
+        10000
+      )
+
+      const statResult = await runStatAnalysis({
+        normalizedUsage: usageResult.normalizedUsage,
+        dailyRequestCounts: usageResult.dailyRequestCounts || [],
+        totalCarbonKg: precomputedCarbon.totalCarbonKg,
+        industry: company?.industry || 'default',
+      })
+
+      return { output: statResult }
+    }
+
+    case 'carbon_water_accountant': {
+      const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
+      const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
+      const precomputedCarbon = await withTimeout(
+        'Carbon baseline',
+        calculateCarbon(usageResult.normalizedUsage),
+        10000
+      )
+
+      const carbonWaterResult = await withTimeout(
+        'Carbon & water accountant',
+        runCarbonWaterAccountant(usageResult, statResult, precomputedCarbon),
+        15000
+      )
+
+      return { output: carbonWaterResult }
+    }
+
+    case 'license_intelligence': {
+      const integrations = await getActiveIntegrations(supabase, companyId)
+      const licenseResult = await withTimeout(
+        'License intelligence',
+        runLicenseIntelligence(integrations),
+        20000
+      )
+
+      return { output: licenseResult }
+    }
+
+    case 'strategic_translator': {
+      const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
+      const carbonWaterResult = requireOutput<CarbonWaterResult>(artifacts.outputs, 'carbon_water_accountant')
+      const licenseResult = requireOutput<LicenseIntelligenceResult>(artifacts.outputs, 'license_intelligence')
+      const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
+      const company = await getCompany(supabase, companyId)
+      const threadId = await prepareStrategicTranslatorThread(
+        supabase,
+        claim.job.id,
+        companyId,
+        claim.job.backboard_thread_id,
+        artifacts.outputs,
+        withTimeout
+      )
+
+      let translatorResult: any = FALLBACK_TRANSLATOR_OUTPUT
+
+      if (threadId) {
+        try {
+          translatorResult = await withTimeout(
+            'Strategic translator',
+            runStrategicTranslator(
+              threadId,
+              usageResult,
+              carbonWaterResult,
+              licenseResult,
+              statResult,
+              company
+            ),
+            25000
+          )
+        } catch (translatorError: any) {
+          console.warn(
+            'Backboard strategic translator failed, falling back to Gemini:',
+            translatorError.message
+          )
+          try {
+            translatorResult = await withTimeout(
+              'Strategic translator (Gemini)',
+              runStrategicTranslatorGemini(
+                usageResult,
+                carbonWaterResult,
+                licenseResult,
+                statResult,
+                company
+              ),
+              35000
+            )
+          } catch (geminiError: any) {
+            console.warn(
+              'Gemini strategic translator unavailable, using deterministic fallback:',
+              geminiError.message
+            )
+            translatorResult = buildFallbackTranslation(
+              usageResult,
+              carbonWaterResult,
+              licenseResult,
+              statResult,
+              company
+            )
+          }
+        }
+      } else {
+        try {
+          translatorResult = await withTimeout(
+            'Strategic translator (Gemini)',
+            runStrategicTranslatorGemini(
+              usageResult,
+              carbonWaterResult,
+              licenseResult,
+              statResult,
+              company
+            ),
+            35000
+          )
+        } catch (geminiError: any) {
+          console.warn(
+            'Gemini strategic translator unavailable, using deterministic fallback:',
+            geminiError.message
+          )
+          translatorResult = buildFallbackTranslation(
+            usageResult,
+            carbonWaterResult,
+            licenseResult,
+            statResult,
+            company
+          )
+        }
+      }
+
+      return { output: translatorResult }
+    }
+
+    case 'synthesis': {
+      const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
+      const carbonWaterResult = requireOutput<CarbonWaterResult>(artifacts.outputs, 'carbon_water_accountant')
+      const licenseResult = requireOutput<LicenseIntelligenceResult>(artifacts.outputs, 'license_intelligence')
+      const translatorResult = requireOutput<any>(artifacts.outputs, 'strategic_translator')
+      const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
+      const integrations = await getActiveIntegrations(supabase, companyId)
+
+      const providerStatuses = [
+        ...(usageResult.providerStatus ?? []),
+        ...(licenseResult.providerStatus ?? []),
+        ...integrations
+          .filter((integration) =>
+            integration.provider !== 'openai' &&
+            integration.provider !== 'microsoft'
+          )
+          .map((integration) =>
+            buildUnsupportedProviderStatus(
+              integration.provider,
+              `${integration.provider} is connected but is not yet included in the automated analysis pipeline.`
+            )
+          ),
+      ]
+
+      const reportId = await withTimeout(
+        'Synthesis',
+        runSynthesis(claim.job.id, companyId, {
+          usage: usageResult,
+          carbonWater: carbonWaterResult,
+          license: licenseResult,
+          translator: translatorResult,
+          statAnalysis: statResult,
+          meta: {
+            dataFreshness: deriveDataFreshness(providerStatuses),
+            providerStatuses,
+          },
+        }),
+        30000
+      )
+
+      return { reportId }
+    }
+  }
+}
+
+export async function advanceAnalysisJob(jobId: string, companyId: string) {
   const supabase = createAdminClient()
 
-  const withTimeout = async <T>(label: string, promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  const withTimeout = async <T>(
+    label: string,
+    promise: Promise<T>,
+    timeoutMs: number
+  ): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | null = null
 
     try {
@@ -34,241 +620,98 @@ export async function runPipeline(jobId: string, companyId: string) {
           timer = setTimeout(() => {
             reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`))
           }, timeoutMs)
-        })
+        }),
       ])
     } finally {
       if (timer) clearTimeout(timer)
     }
   }
 
-  const setStatus = async (status: string, agent?: string) => {
-    const { error } = await supabase.from('analysis_jobs').update({
-      status, current_agent: agent || null,
-      ...(status === 'running' && !agent ? { started_at: new Date().toISOString() } : {}),
-      ...(['complete', 'failed'].includes(status) ? { completed_at: new Date().toISOString() } : {})
-    }).eq('id', jobId)
-
-    throwIfSupabaseError(error, `Failed to update analysis job ${jobId} to ${status}`)
-  }
-
-  const saveOutput = async (agentName: string, output: any) => {
-    const { error } = await supabase
-      .from('agent_outputs')
-      .insert({ job_id: jobId, agent_name: agentName, output })
-
-    throwIfSupabaseError(error, `Failed to persist ${agentName} output for job ${jobId}`)
-  }
-
-  const claimJobForExecution = async () => {
-    const startedAt = new Date().toISOString()
-    const { data, error } = await supabase
-      .from('analysis_jobs')
-      .update({
-        status: 'running',
-        current_agent: null,
-        started_at: startedAt,
-      })
-      .eq('id', jobId)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle()
-
-    throwIfSupabaseError(error, `Failed to claim analysis job ${jobId}`)
-
-    return Boolean(data?.id)
-  }
-
-  // Safety net: if the pipeline hasn't finished within 4 minutes, mark it failed.
-  // This fires even if an individual agent somehow escapes its own timeout.
-  const PIPELINE_MAX_MS = 4 * 60 * 1000
-  const pipelineGuard = setTimeout(async () => {
-    console.error(`[Pipeline ${jobId}] Exceeded ${PIPELINE_MAX_MS / 1000}s, marking as failed`)
-    const { error } = await supabase.from('analysis_jobs').update({
-      status: 'failed',
-      error_message: 'Analysis exceeded the maximum allowed duration. Please try again.',
-      completed_at: new Date().toISOString(),
-    }).eq('id', jobId).in('status', ['pending', 'running'])
-    if (error) {
-      console.error(`[Pipeline ${jobId}] Failed to mark timed out job as failed:`, error.message)
-    }
-  }, PIPELINE_MAX_MS)
-
   try {
-    const claimed = await claimJobForExecution()
-    if (!claimed) {
-      clearTimeout(pipelineGuard)
+    const { job, artifacts } = await loadJobAndArtifacts(supabase, jobId)
+    if (!job || job.company_id !== companyId) {
       return null
     }
 
-    // Attempt to create a Backboard thread for LLM-powered strategic analysis.
-    // If Backboard is unavailable the pipeline continues without it.
-    let threadId: string | null = null
+    if (hasAnalysisJobExceededMaxAge(job)) {
+      await markJobFailed(supabase, jobId, ANALYSIS_MAX_AGE_TIMEOUT_MESSAGE)
+      return null
+    }
+
+    const nextStep = resolveNextPipelineStep(
+      artifacts.completedAgents,
+      Boolean(artifacts.reportId)
+    )
+
+    if (!nextStep) {
+      if (artifacts.reportId && job.status !== 'complete') {
+        const { error } = await supabase
+          .from('analysis_jobs')
+          .update({
+            status: 'complete',
+            current_agent: null,
+            lease_expires_at: null,
+            completed_at: new Date().toISOString(),
+            last_progress_at: new Date().toISOString(),
+            error_message: null,
+          })
+          .eq('id', jobId)
+
+        throwIfSupabaseError(error, `Failed to complete analysis job ${jobId}`)
+      }
+
+      return artifacts.reportId
+    }
+
+    if (!isClaimableActiveAnalysisJob(job)) {
+      return artifacts.reportId
+    }
+
+    const claim = await claimJobLease(supabase, job, nextStep)
+    if (!claim) {
+      return artifacts.reportId
+    }
+
     try {
-      const assistant = await withTimeout(
-        'Backboard setup',
-        backboard.createAssistant(
-          `GreenLens-${companyId}-${jobId}`,
-          `You are the GreenLens analysis pipeline coordinator.
-         You receive structured JSON findings from specialist agents and stat analysis.
-         Store all findings in memory and make them available to subsequent agents.
-         Always respond in valid JSON only. No markdown.`
-        ),
-        10000
-      )
-      const thread = await withTimeout(
-        'Backboard thread',
-        backboard.createThread(assistant.assistant_id ?? assistant.id),
-        10000
-      )
-      threadId = thread.thread_id ?? thread.id ?? null
-    } catch (backboardErr: any) {
-      console.warn('Backboard unavailable, running without LLM strategic analysis:', backboardErr.message)
-    }
+      const result = await executePipelineStep(supabase, claim, artifacts, withTimeout)
 
-    const { data: integrations } = await supabase.from('integrations').select('*')
-      .eq('company_id', companyId).eq('is_active', true)
-    const activeIntegrations = (integrations ?? []) as IntegrationRecord[]
-
-    const { data: company } = await supabase.from('companies').select('*')
-      .eq('id', companyId).single()
-
-    // ── AGENT 1: Usage Analyst ────────────────────────────────────────
-    await setStatus('running', 'usage_analyst')
-    const usageResult = await withTimeout('Usage analyst', runUsageAnalyst(integrations || []), 20000)
-    await saveOutput('usage_analyst', usageResult)
-    if (threadId) {
-      backboard.sendMessage(threadId, JSON.stringify({
-        event: 'agent_complete', agent: 'usage_analyst', findings: usageResult
-      })).catch(e => console.warn('Backboard message failed:', e.message))
-    }
-
-    const precomputedCarbon = await withTimeout(
-      'Carbon baseline',
-      calculateCarbon(usageResult.normalizedUsage),
-      10000
-    )
-
-    // ── STAT ANALYSIS ─────────────────────────────────────────────────
-    await setStatus('running', 'stat_analysis')
-    const statResult = await runStatAnalysis({
-      normalizedUsage: usageResult.normalizedUsage,
-      dailyRequestCounts: usageResult.dailyRequestCounts || [],
-      totalCarbonKg: precomputedCarbon.totalCarbonKg,
-      industry: company?.industry || 'default'
-    })
-    await saveOutput('stat_analysis', statResult)
-    if (threadId) {
-      backboard.sendMessage(threadId, JSON.stringify({
-        event: 'stat_analysis_complete', findings: statResult
-      })).catch(e => console.warn('Backboard message failed:', e.message))
-    }
-
-    // ── AGENT 2: Carbon & Water Accountant ────────────────────────────
-    await setStatus('running', 'carbon_water_accountant')
-    const carbonWaterResult = await withTimeout(
-      'Carbon & water accountant',
-      runCarbonWaterAccountant(usageResult, statResult, precomputedCarbon),
-      15000
-    )
-    await saveOutput('carbon_water_accountant', carbonWaterResult)
-    if (threadId) {
-      backboard.sendMessage(threadId, JSON.stringify({
-        event: 'agent_complete', agent: 'carbon_water_accountant', findings: carbonWaterResult
-      })).catch(e => console.warn('Backboard message failed:', e.message))
-    }
-
-    // ── AGENT 3: License Intelligence ─────────────────────────────────
-    await setStatus('running', 'license_intelligence')
-    const licenseResult = await withTimeout('License intelligence', runLicenseIntelligence(integrations || []), 20000)
-    await saveOutput('license_intelligence', licenseResult)
-    if (threadId) {
-      backboard.sendMessage(threadId, JSON.stringify({
-        event: 'agent_complete', agent: 'license_intelligence', findings: licenseResult
-      })).catch(e => console.warn('Backboard message failed:', e.message))
-    }
-
-    // ── AGENT 4: Strategic Translator ─────────────────────────────────
-    await setStatus('running', 'strategic_translator')
-    let translatorResult: any = FALLBACK_TRANSLATOR_OUTPUT
-    if (threadId) {
-      try {
-        translatorResult = await withTimeout(
-          'Strategic translator',
-          runStrategicTranslator(threadId, usageResult, carbonWaterResult, licenseResult, statResult, company),
-          25000
+      if (claim.step !== 'synthesis') {
+        await upsertAgentOutput(
+          supabase,
+          jobId,
+          claim.step as SavedOutputStep,
+          result.output
         )
-      } catch (translatorErr: any) {
-        console.warn('Backboard strategic translator failed, falling back to Gemini:', translatorErr.message)
-        try {
-          translatorResult = await withTimeout(
-            'Strategic translator (Gemini)',
-            runStrategicTranslatorGemini(usageResult, carbonWaterResult, licenseResult, statResult, company),
-            35000
-          )
-        } catch (geminiErr: any) {
-          console.warn('Gemini strategic translator unavailable, using deterministic fallback:', geminiErr.message)
-          translatorResult = buildFallbackTranslation(usageResult, carbonWaterResult, licenseResult, statResult, company)
-        }
       }
-    } else {
-      // No Backboard thread — try Gemini directly
-      try {
-        translatorResult = await withTimeout(
-          'Strategic translator (Gemini)',
-          runStrategicTranslatorGemini(usageResult, carbonWaterResult, licenseResult, statResult, company),
-          35000
-        )
-      } catch (geminiErr: any) {
-        console.warn('Gemini strategic translator unavailable, using deterministic fallback:', geminiErr.message)
-        translatorResult = buildFallbackTranslation(usageResult, carbonWaterResult, licenseResult, statResult, company)
+
+      const advanced = await advanceJobAfterStep(
+        supabase,
+        claim,
+        getNextPipelineStep(claim.step)
+      )
+
+      if (!advanced) {
+        return artifacts.reportId
       }
+
+      return result.reportId ?? artifacts.reportId
+    } catch (stepError: any) {
+      const message = stepError instanceof Error ? stepError.message : 'Unknown pipeline step failure'
+      await markJobFailed(supabase, jobId, message, claim)
+      return null
     }
-    await saveOutput('strategic_translator', translatorResult)
-
-    const providerStatuses = [
-      ...usageResult.providerStatus,
-      ...licenseResult.providerStatus,
-      ...activeIntegrations
-        .filter((integration) =>
-          integration.provider !== 'openai' &&
-          integration.provider !== 'microsoft'
-        )
-        .map((integration) =>
-          buildUnsupportedProviderStatus(
-            integration.provider,
-            `${integration.provider} is connected but is not yet included in the automated analysis pipeline.`
-          )
-        ),
-    ]
-    const dataFreshness = deriveDataFreshness(providerStatuses)
-
-    // ── SYNTHESIS ─────────────────────────────────────────────────────
-    await setStatus('running', 'synthesis')
-    const reportId = await withTimeout('Synthesis', runSynthesis(jobId, companyId, {
-      usage: usageResult, carbonWater: carbonWaterResult,
-      license: licenseResult, translator: translatorResult,
-      statAnalysis: statResult,
-      meta: {
-        dataFreshness,
-        providerStatuses,
-      },
-    }), 30000)
-
-    await setStatus('complete')
-    clearTimeout(pipelineGuard)
-    return reportId
-
   } catch (error: any) {
-    clearTimeout(pipelineGuard)
-    const { error: updateError } = await supabase.from('analysis_jobs').update({
-      status: 'failed', error_message: error.message,
-      completed_at: new Date().toISOString()
-    }).eq('id', jobId)
-    if (updateError) {
-      console.error(`[Pipeline ${jobId}] Failed to mark job as failed:`, updateError.message)
-    }
-    throw error
+    const message = error instanceof Error ? error.message : 'Unknown pipeline failure'
+    console.error(`[Pipeline ${jobId}] Step advance failed:`, message)
+    await markJobFailed(supabase, jobId, message).catch((markFailedError) => {
+      console.error(`[Pipeline ${jobId}] Failed to mark job as failed:`, markFailedError)
+    })
+    return null
   }
+}
+
+export async function runPipeline(jobId: string, companyId: string) {
+  return advanceAnalysisJob(jobId, companyId)
 }
 
 // Generates basic strategic output from data without requiring Backboard/LLM
@@ -344,8 +787,8 @@ function buildFallbackTranslation(usage: any, carbonWater: any, license: any, st
     decisions,
     incentivesAndBenefits: [],
     mitigationStrategies,
-    hypeCycleContext: 'Enterprise AI deployments are entering a phase of scrutiny around ROI and sustainability. Organisations that establish clear efficiency metrics now will be well-positioned when AI governance requirements mature.',
+    hypeCycleContext: 'AI adoption is moving from experimentation toward operational discipline. Organisations that establish usage visibility and efficiency benchmarks now are better positioned as governance expectations mature.',
     executiveNarrative: narrative,
-    esgDisclosureText: `This disclosure covers AI-related Scope 3 emissions for the reporting period ${new Date().toISOString().slice(0, 7)}. Carbon calculations use model-specific energy intensity data (ArXiv 2505.09598), regional grid carbon intensity (EPA eGRID 2024 / IEA 2024), and a PUE of 1.1. Water consumption is estimated using WUE of 1.9 L/kWh with regional stress multipliers from the WRI Aqueduct database. Data collected via provider admin APIs only; no individual user content is accessed.`
+    esgDisclosureText: `${company?.name ?? 'The organisation'} consumed ${carbonWater.totalCarbonKg?.toFixed(1)} kg CO2e and ${carbonWater.totalWaterLiters?.toLocaleString()} liters of water through AI workloads during this reporting period. Calculations use model-specific energy intensity, regional grid carbon intensity, and industry-standard PUE/WUE assumptions.`
   }
 }

@@ -169,8 +169,12 @@ export function aggregateOpenAIUsageBuckets(
   }
 }
 
-export async function getOpenAIUsage(apiKey: string, daysBack: number = 30) {
-  if (apiKey === DEMO_SENTINEL_OPENAI) return getFakeOpenAIUsage()
+export async function getOpenAIUsage(
+  apiKey: string,
+  daysBack: number = 30,
+  demoRunIndex: number = 1
+) {
+  if (apiKey === DEMO_SENTINEL_OPENAI) return getFakeOpenAIUsage(demoRunIndex)
 
   const { startTime, endTime, coverageStart, coverageEnd } = getUsageWindow(daysBack)
   const asOf = new Date().toISOString()

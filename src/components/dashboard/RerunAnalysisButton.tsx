@@ -1,8 +1,9 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAnalysisJob } from '@/lib/analysis/use-analysis-job'
 import type { AnalysisJobState } from '@/lib/analysis/state'
+import { buildReportNavigationTarget } from '@/lib/reports/report-navigation'
 
 const AGENT_LABELS: Record<string, string> = {
   usage_analyst: 'Collecting usage data…',
@@ -19,9 +20,21 @@ interface Props {
 
 export default function RerunAnalysisButton({ initialJobState = null }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { loading, jobState, error, triggerAnalysis, statusMessage } = useAnalysisJob({
     initialJobState,
-    onComplete: () => router.refresh(),
+    onComplete: (nextState) => {
+      if (!nextState.reportId) {
+        router.refresh()
+        return
+      }
+
+      router.replace(
+        buildReportNavigationTarget(pathname, searchParams.toString(), nextState.reportId)
+      )
+      router.refresh()
+    },
   })
 
   const label = jobState?.current_agent
