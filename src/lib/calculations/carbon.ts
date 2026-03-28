@@ -10,8 +10,12 @@ interface UsageRecord {
 
 export async function calculateCarbon(usageData: UsageRecord[]) {
   const supabase = createAdminClient()
-  const { data: energyLibrary } = await supabase.from('model_energy_library').select('*')
-  const { data: regionalData } = await supabase.from('regional_carbon_intensity').select('*')
+  // Run both table reads in parallel — they're independent and sequential was
+  // the primary hang point when Supabase was slow.
+  const [{ data: energyLibrary }, { data: regionalData }] = await Promise.all([
+    supabase.from('model_energy_library').select('*'),
+    supabase.from('regional_carbon_intensity').select('*'),
+  ])
 
   let totalCarbonGrams = 0
   let alternativeCarbonGrams = 0

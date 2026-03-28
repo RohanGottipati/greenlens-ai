@@ -32,6 +32,9 @@ function getStatusMessage(jobState: AnalysisJobState | null) {
   return null
 }
 
+// If the client has been polling for longer than this without a terminal state, bail out.
+const POLLING_TIMEOUT_MS = 6 * 60 * 1000
+
 export function useAnalysisJob({
   initialJobState = null,
   onComplete,
@@ -39,12 +42,14 @@ export function useAnalysisJob({
   const [jobState, setJobState] = useState<AnalysisJobState | null>(initialJobState)
   const [error, setError] = useState<string | null>(initialJobState?.error_message ?? null)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollStartRef = useRef<number | null>(null)
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current)
       pollIntervalRef.current = null
     }
+    pollStartRef.current = null
   }, [])
 
   const handleTerminalState = useCallback((nextState: AnalysisJobState) => {
@@ -61,6 +66,13 @@ export function useAnalysisJob({
   }, [onComplete])
 
   const pollStatus = useCallback(async (jobId: string) => {
+    // Client-side safety valve: stop polling if we've been waiting too long.
+    if (pollStartRef.current && Date.now() - pollStartRef.current > POLLING_TIMEOUT_MS) {
+      stopPolling()
+      setError('Analysis is taking longer than expected. Please reload the page and try again.')
+      return
+    }
+
     try {
       const response = await fetch(`/api/pipeline/status?jobId=${jobId}`, { cache: 'no-store' })
       if (!response.ok) throw new Error('Failed to fetch analysis status')
@@ -83,6 +95,7 @@ export function useAnalysisJob({
 
   const startPolling = useCallback((jobId: string) => {
     stopPolling()
+    pollStartRef.current = Date.now()
     void pollStatus(jobId)
     pollIntervalRef.current = setInterval(() => {
       void pollStatus(jobId)

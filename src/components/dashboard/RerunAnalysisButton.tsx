@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useAnalysisJob } from '@/lib/analysis/use-analysis-job'
+import type { AnalysisJobState } from '@/lib/analysis/state'
 
 const AGENT_LABELS: Record<string, string> = {
   usage_analyst: 'Collecting usage data…',
@@ -12,9 +13,14 @@ const AGENT_LABELS: Record<string, string> = {
   synthesis: 'Finalizing report…',
 }
 
-export default function RerunAnalysisButton() {
+interface Props {
+  initialJobState?: AnalysisJobState | null
+}
+
+export default function RerunAnalysisButton({ initialJobState = null }: Props) {
   const router = useRouter()
   const { loading, jobState, error, triggerAnalysis, statusMessage } = useAnalysisJob({
+    initialJobState,
     onComplete: () => router.refresh(),
   })
 

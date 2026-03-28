@@ -38,6 +38,18 @@ export async function runPipeline(jobId: string, companyId: string) {
   const saveOutput = async (agentName: string, output: any) =>
     supabase.from('agent_outputs').insert({ job_id: jobId, agent_name: agentName, output })
 
+  // Safety net: if the pipeline hasn't finished within 4 minutes, mark it failed.
+  // This fires even if an individual agent somehow escapes its own timeout.
+  const PIPELINE_MAX_MS = 4 * 60 * 1000
+  const pipelineGuard = setTimeout(async () => {
+    console.error(`[Pipeline ${jobId}] Exceeded ${PIPELINE_MAX_MS / 1000}s, marking as failed`)
+    await supabase.from('analysis_jobs').update({
+      status: 'failed',
+      error_message: 'Analysis exceeded the maximum allowed duration. Please try again.',
+      completed_at: new Date().toISOString(),
+    }).eq('id', jobId).in('status', ['pending', 'running'])
+  }, PIPELINE_MAX_MS)
+
   try {
     await setStatus('running')
 
@@ -45,14 +57,22 @@ export async function runPipeline(jobId: string, companyId: string) {
     // If Backboard is unavailable the pipeline continues without it.
     let threadId: string | null = null
     try {
-      const assistant = await backboard.createAssistant(
-        `GreenLens-${companyId}-${jobId}`,
-        `You are the GreenLens analysis pipeline coordinator.
+      const assistant = await withTimeout(
+        'Backboard setup',
+        backboard.createAssistant(
+          `GreenLens-${companyId}-${jobId}`,
+          `You are the GreenLens analysis pipeline coordinator.
          You receive structured JSON findings from specialist agents and stat analysis.
          Store all findings in memory and make them available to subsequent agents.
          Always respond in valid JSON only. No markdown.`
+        ),
+        10000
       )
-      const thread = await backboard.createThread(assistant.assistant_id ?? assistant.id)
+      const thread = await withTimeout(
+        'Backboard thread',
+        backboard.createThread(assistant.assistant_id ?? assistant.id),
+        10000
+      )
       threadId = thread.thread_id ?? thread.id ?? null
     } catch (backboardErr: any) {
       console.warn('Backboard unavailable, running without LLM strategic analysis:', backboardErr.message)
@@ -91,7 +111,7 @@ export async function runPipeline(jobId: string, companyId: string) {
 
     // ── AGENT 2: Carbon & Water Accountant ────────────────────────────
     await setStatus('running', 'carbon_water_accountant')
-    const carbonWaterResult = await runCarbonWaterAccountant(usageResult, statResult)
+    const carbonWaterResult = await withTimeout('Carbon & water accountant', runCarbonWaterAccountant(usageResult, statResult), 15000)
     await saveOutput('carbon_water_accountant', carbonWaterResult)
     if (threadId) {
       backboard.sendMessage(threadId, JSON.stringify({
@@ -149,16 +169,18 @@ export async function runPipeline(jobId: string, companyId: string) {
 
     // ── SYNTHESIS ─────────────────────────────────────────────────────
     await setStatus('running', 'synthesis')
-    const reportId = await runSynthesis(jobId, companyId, {
+    const reportId = await withTimeout('Synthesis', runSynthesis(jobId, companyId, {
       usage: usageResult, carbonWater: carbonWaterResult,
       license: licenseResult, translator: translatorResult,
       statAnalysis: statResult
-    })
+    }), 30000)
 
     await setStatus('complete')
+    clearTimeout(pipelineGuard)
     return reportId
 
   } catch (error: any) {
+    clearTimeout(pipelineGuard)
     await supabase.from('analysis_jobs').update({
       status: 'failed', error_message: error.message,
       completed_at: new Date().toISOString()

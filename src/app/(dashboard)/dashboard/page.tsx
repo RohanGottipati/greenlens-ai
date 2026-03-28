@@ -11,7 +11,7 @@ export default async function DashboardPage() {
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
   const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).single()
+    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).maybeSingle()
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -35,7 +35,7 @@ export default async function DashboardPage() {
           <h1 className="text-3xl font-bold text-white">AI Intelligence Brief</h1>
           <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
         </div>
-        <RerunAnalysisButton />
+        <RerunAnalysisButton initialJobState={analysisJob} />
       </div>
 
       {/* Anomaly alert */}
