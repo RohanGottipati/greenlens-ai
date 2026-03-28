@@ -1,1 +1,91 @@
-export default function Page() { return null }
+'use client'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+
+export default function OnboardingPage() {
+  const router = useRouter()
+  const supabase = createClient()
+  const [form, setForm] = useState({
+    name: '', industry: '', headcount_range: '',
+    esg_reporting: [] as string[],
+    international_offices: [] as string[]
+  })
+
+  const handleSubmit = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('companies').insert({
+      name: form.name, industry: form.industry,
+      headcount_range: form.headcount_range,
+      esg_reporting_obligations: form.esg_reporting,
+      international_offices: form.international_offices,
+      supabase_user_id: user!.id, onboarding_complete: false
+    })
+    router.push('/onboarding/connect')
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 p-8 flex items-center justify-center">
+      <div className="max-w-lg w-full">
+        <h1 className="text-2xl font-bold text-white mb-2">Tell us about your company</h1>
+        <p className="text-gray-400 mb-8">Step 1 of 3 — takes about 2 minutes</p>
+        <div className="space-y-4">
+          <input placeholder="Company name" value={form.name}
+            onChange={e => setForm({...form, name: e.target.value})}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-gray-500" />
+
+          <select value={form.industry} onChange={e => setForm({...form, industry: e.target.value})}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gray-500">
+            <option value="">Select industry</option>
+            <option value="financial_services">Financial Services</option>
+            <option value="consulting">Consulting</option>
+            <option value="insurance">Insurance</option>
+            <option value="technology">Technology</option>
+            <option value="healthcare">Healthcare</option>
+          </select>
+
+          <select value={form.headcount_range} onChange={e => setForm({...form, headcount_range: e.target.value})}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gray-500">
+            <option value="">Company size</option>
+            <option value="100-500">100–500 employees</option>
+            <option value="500-2000">500–2,000 employees</option>
+            <option value="2000-10000">2,000–10,000 employees</option>
+            <option value="10000+">10,000+ employees</option>
+          </select>
+
+          <div>
+            <p className="text-gray-400 text-sm mb-2">ESG reporting obligations</p>
+            {['CSRD', 'GRI', 'IFRS S2', 'CDP', 'UK SDR', 'None currently'].map(o => (
+              <label key={o} className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="checkbox" checked={form.esg_reporting.includes(o)}
+                  onChange={e => setForm({...form, esg_reporting: e.target.checked
+                    ? [...form.esg_reporting, o] : form.esg_reporting.filter(x => x !== o)})}
+                  className="rounded" />
+                <span className="text-white">{o}</span>
+              </label>
+            ))}
+          </div>
+
+          <div>
+            <p className="text-gray-400 text-sm mb-2">Regions with significant operations</p>
+            <p className="text-gray-500 text-xs mb-2">Used to surface relevant regulatory incentives</p>
+            {['EU', 'UK', 'Canada', 'Singapore', 'Japan', 'Australia'].map(r => (
+              <label key={r} className="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="checkbox" checked={form.international_offices.includes(r)}
+                  onChange={e => setForm({...form, international_offices: e.target.checked
+                    ? [...form.international_offices, r] : form.international_offices.filter(x => x !== r)})}
+                  className="rounded" />
+                <span className="text-white">{r}</span>
+              </label>
+            ))}
+          </div>
+
+          <button onClick={handleSubmit} disabled={!form.name || !form.industry}
+            className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors">
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
