@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { findBestEnergyProfileMatch } from '@/lib/analysis/model-classification'
 
 interface UsageRecord {
   model: string
@@ -6,6 +7,23 @@ interface UsageRecord {
   totalInputTokens: number
   totalOutputTokens: number
   region?: string
+}
+
+interface EnergyLibraryRecord {
+  model_identifier: string
+  provider: string | null
+  model_class: string
+  energy_wh_per_1k_input_tokens: number
+  energy_wh_per_1k_output_tokens: number
+  relative_efficiency_score: number
+}
+
+interface RegionalIntensityRecord {
+  provider: string | null
+  region_identifier: string
+  carbon_intensity_gco2_per_kwh: number
+  water_usage_effectiveness: number
+  water_stress_multiplier: number
 }
 
 export async function calculateCarbon(usageData: UsageRecord[]) {
@@ -17,23 +35,25 @@ export async function calculateCarbon(usageData: UsageRecord[]) {
     supabase.from('regional_carbon_intensity').select('*'),
   ])
 
+  const energyRecords = (energyLibrary ?? []) as EnergyLibraryRecord[]
+  const regionRecords = (regionalData ?? []) as RegionalIntensityRecord[]
+
   let totalCarbonGrams = 0
   let alternativeCarbonGrams = 0
   const byModel: Array<{ model: string, carbonKg: number, percentage: number }> = []
 
   for (const usage of usageData) {
-    const modelData =
-      energyLibrary?.find(m => m.model_identifier === usage.model) ||
-      energyLibrary?.find(m => usage.model.includes(m.model_identifier)) ||
-      energyLibrary?.find(m => m.model_class === 'frontier' && m.provider === usage.provider) ||
-      energyLibrary?.find(m => m.model_class === 'frontier')
+    const modelData = findBestEnergyProfileMatch(usage.model, usage.provider, energyRecords)
 
     if (!modelData) continue
 
     const regionData =
-      regionalData?.find(r => r.provider === usage.provider && usage.region?.includes(r.region_identifier)) ||
-      regionalData?.find(r => r.provider === usage.provider) ||
-      regionalData?.find(r => r.region_identifier === 'default') ||
+      regionRecords.find((region) =>
+        region.provider === usage.provider &&
+        Boolean(usage.region?.includes(region.region_identifier))
+      ) ||
+      regionRecords.find((region) => region.provider === usage.provider) ||
+      regionRecords.find((region) => region.region_identifier === 'default') ||
       { carbon_intensity_gco2_per_kwh: 300, water_usage_effectiveness: 1.9, water_stress_multiplier: 1.2 }
 
     const energyWh =
@@ -45,8 +65,8 @@ export async function calculateCarbon(usageData: UsageRecord[]) {
     totalCarbonGrams += carbonGrams
 
     const efficientAlternative =
-      energyLibrary?.find(m => m.model_class === 'small' && m.provider === usage.provider) ||
-      energyLibrary?.find(m => m.model_class === 'small')
+      energyRecords.find((record) => record.model_class === 'small' && record.provider === usage.provider) ||
+      energyRecords.find((record) => record.model_class === 'small')
 
     if (efficientAlternative) {
       const altEnergyWh =
@@ -65,7 +85,7 @@ export async function calculateCarbon(usageData: UsageRecord[]) {
 
   const totalTokens = usageData.reduce((sum, u) => sum + u.totalInputTokens + u.totalOutputTokens, 0)
   const weightedEfficiency = usageData.reduce((sum, u) => {
-    const modelData = energyLibrary?.find(m => m.model_identifier === u.model)
+    const modelData = findBestEnergyProfileMatch(u.model, u.provider, energyRecords)
     const score = modelData?.relative_efficiency_score || 20
     const weight = (u.totalInputTokens + u.totalOutputTokens) / Math.max(totalTokens, 1)
     return sum + (score * weight)

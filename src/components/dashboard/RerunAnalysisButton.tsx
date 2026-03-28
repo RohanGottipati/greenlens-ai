@@ -30,12 +30,6 @@ export default function RerunAnalysisButton({ initialJobState = null }: Props) {
 
   return (
     <div className="flex items-center gap-3">
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <div className="w-3.5 h-3.5 border-2 border-green-400 border-t-transparent rounded-full animate-spin shrink-0" />
-          <span>{label}</span>
-        </div>
-      )}
       {error && !loading && (
         <span className="text-red-400 text-xs">{error}</span>
       )}
@@ -47,7 +41,7 @@ export default function RerunAnalysisButton({ initialJobState = null }: Props) {
         {loading ? (
           <>
             <span className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-            Running…
+            {label}
           </>
         ) : (
           <>

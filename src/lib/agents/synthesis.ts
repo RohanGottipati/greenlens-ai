@@ -1,9 +1,21 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { StatAnalysisResult } from '@/lib/analysis/run-stat-analysis'
+import type { DataFreshness, ProviderAnalysisStatus } from '@/lib/analysis/provider-status'
+import type { LicenseIntelligenceResult } from './license-intelligence'
+
+type ReportStatAnalysis = Partial<StatAnalysisResult> & {
+  error?: string
+}
 
 interface SynthesisOutputs {
   usage: {
     frontierModelPercentage?: number
     normalizedUsage?: unknown[]
+    coverageStart?: string | null
+    coverageEnd?: string | null
+    latestCompleteDay?: string | null
+    asOf?: string | null
+    providerStatus?: ProviderAnalysisStatus[]
   }
   carbonWater: {
     totalCarbonKg?: number
@@ -21,7 +33,8 @@ interface SynthesisOutputs {
   }
   license: {
     overallUtilizationRate?: number
-  } & Record<string, unknown>
+    providerStatus?: ProviderAnalysisStatus[]
+  } & LicenseIntelligenceResult
   translator: {
     executiveNarrative?: string
     hypeCycleContext?: string
@@ -30,17 +43,10 @@ interface SynthesisOutputs {
     mitigationStrategies?: unknown[]
     esgDisclosureText?: string
   }
-  statAnalysis: {
-    anomaly_detection?: {
-      anomaly_detected?: boolean
-    } & Record<string, unknown>
-    usage_trend?: {
-      trend_direction?: string
-    } & Record<string, unknown>
-    carbon_percentile?: {
-      percentile?: number | null
-    } & Record<string, unknown>
-    task_clustering?: unknown
+  statAnalysis: ReportStatAnalysis
+  meta: {
+    dataFreshness: DataFreshness
+    providerStatuses: ProviderAnalysisStatus[]
   }
 }
 
@@ -122,6 +128,8 @@ export async function runSynthesis(
       hype_cycle_context: outputs.translator.hypeCycleContext,
       decisions_preview: outputs.translator.decisions?.slice(0, 3),
       mitigation_strategies: outputs.translator.mitigationStrategies,
+      data_freshness: outputs.meta.dataFreshness,
+      provider_statuses: outputs.meta.providerStatuses,
     },
 
     footprint_detail: {
@@ -133,7 +141,8 @@ export async function runSynthesis(
       water_bottles: outputs.carbonWater.totalWaterBottles,
       water_savings_liters: outputs.carbonWater.waterSavingsLiters,
       carbon_methodology: outputs.carbonWater.carbonMethodology,
-      water_methodology: outputs.carbonWater.waterMethodology
+      water_methodology: outputs.carbonWater.waterMethodology,
+      data_freshness: outputs.meta.dataFreshness,
     },
 
     model_efficiency_analysis: {
@@ -142,7 +151,9 @@ export async function runSynthesis(
       efficiency_score: outputs.carbonWater.modelEfficiencyScore,
       mismatch_rate: outputs.carbonWater.modelTaskMismatchRate,
       mismatched_clusters: outputs.carbonWater.mismatchedModelClusters,
-      frontier_percentage: outputs.usage.frontierModelPercentage
+      frontier_percentage: outputs.usage.frontierModelPercentage,
+      data_freshness: outputs.meta.dataFreshness,
+      provider_statuses: outputs.meta.providerStatuses,
     },
 
     stat_analysis: {
@@ -152,7 +163,10 @@ export async function runSynthesis(
       task_clustering_summary: outputs.statAnalysis?.task_clustering
     },
 
-    license_intelligence: outputs.license,
+    license_intelligence: {
+      ...outputs.license,
+      provider_statuses: outputs.meta.providerStatuses,
+    },
 
     strategic_decisions: {
       decisions: outputs.translator.decisions,
@@ -171,7 +185,9 @@ export async function runSynthesis(
 
     benchmark_data: {
       carbon_percentile: outputs.statAnalysis?.carbon_percentile,
-      hype_cycle_context: outputs.translator.hypeCycleContext
+      hype_cycle_context: outputs.translator.hypeCycleContext,
+      data_freshness: outputs.meta.dataFreshness,
+      provider_statuses: outputs.meta.providerStatuses,
     },
 
     esg_disclosure: {

@@ -4,6 +4,54 @@
 
 // ── MATH UTILITIES ─────────────────────────────────────────────────────────────
 
+export interface UsageRecordForStatAnalysis {
+  model: string
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalRequests: number
+}
+
+export interface TaskCluster {
+  model: string
+  task_category: string
+  appropriate_model_class: string
+  cluster_id: number
+}
+
+export interface StatAnalysisResult {
+  anomaly_detection: {
+    anomaly_detected: boolean
+    reason?: string
+    anomaly_day_indices?: number[]
+    mean_daily_requests?: number
+    std_dev?: number
+    max_z_score?: number
+    method?: string
+  }
+  usage_trend: {
+    trend?: string
+    slope?: number
+    r_squared?: number
+    p_value?: number
+    trend_direction?: 'increasing' | 'decreasing' | 'stable'
+    trend_significant?: boolean
+    projected_30d_requests?: number
+    method?: string
+  }
+  carbon_percentile: {
+    percentile: number
+    industry_mean_kg: number
+    industry_std_kg: number
+    relative_position: string
+    method: string
+  }
+  task_clustering: {
+    clusters: TaskCluster[]
+    n_clusters?: number
+    method: string
+  }
+}
+
 function mean(arr: number[]): number {
   if (arr.length === 0) return 0
   return arr.reduce((s, v) => s + v, 0) / arr.length
@@ -85,11 +133,14 @@ function computeUsageTrend(dailyCounts: number[]) {
   }
   const { slope, intercept, rSquared, pValue } = linearRegression(dailyCounts)
   const projected = Math.max(0, slope * (dailyCounts.length + 30) + intercept)
+  const trendDirection: 'increasing' | 'decreasing' | 'stable' =
+    slope > 0.5 ? 'increasing' : slope < -0.5 ? 'decreasing' : 'stable'
+
   return {
     slope: Math.round(slope * 10000) / 10000,
     r_squared: Math.round(rSquared * 10000) / 10000,
     p_value: Math.round(pValue * 10000) / 10000,
-    trend_direction: slope > 0.5 ? 'increasing' : slope < -0.5 ? 'decreasing' : 'stable',
+    trend_direction: trendDirection,
     trend_significant: pValue < 0.05,
     projected_30d_requests: Math.round(projected * 100) / 100,
     method: 'Ordinary least squares linear regression'
@@ -127,7 +178,7 @@ function computeCarbonPercentile(companyCarbonKg: number, industry: string) {
 // applied directly — skipping the embedding step since the clusters are fully
 // determined by the thresholds.
 
-function clusterUsageByTaskType(usageRecords: any[]) {
+function clusterUsageByTaskType(usageRecords: UsageRecordForStatAnalysis[]) {
   if (!usageRecords || usageRecords.length === 0) {
     return { clusters: [], method: 'rule-based task classification' }
   }
@@ -164,11 +215,11 @@ function clusterUsageByTaskType(usageRecords: any[]) {
 // ── MAIN EXPORT ────────────────────────────────────────────────────────────────
 
 export async function runStatAnalysis(payload: {
-  normalizedUsage: any[]
+  normalizedUsage: UsageRecordForStatAnalysis[]
   dailyRequestCounts: number[]
   totalCarbonKg: number
   industry: string
-}): Promise<any> {
+}): Promise<StatAnalysisResult | { error: string }> {
   try {
     return {
       anomaly_detection: detectUsageAnomalies(payload.dailyRequestCounts),
@@ -176,8 +227,9 @@ export async function runStatAnalysis(payload: {
       carbon_percentile: computeCarbonPercentile(payload.totalCarbonKg, payload.industry),
       task_clustering: clusterUsageByTaskType(payload.normalizedUsage)
     }
-  } catch (err: any) {
-    console.error('Stat analysis error:', err.message)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown stat analysis error'
+    console.error('Stat analysis error:', message)
     return { error: 'stat_analysis_failed' }
   }
 }

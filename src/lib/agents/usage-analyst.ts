@@ -1,4 +1,11 @@
 import { getOpenAIUsage } from '@/lib/integrations/openai'
+import { isFrontierModel } from '@/lib/analysis/model-classification'
+import {
+  buildProviderStatus,
+  type ProviderAnalysisStatus,
+} from '@/lib/analysis/provider-status'
+import { ensureFreshIntegration } from '@/lib/integrations/tokens'
+import type { IntegrationRecord } from '@/lib/integrations/types'
 
 export interface NormalizedUsage {
   model: string
@@ -10,37 +17,92 @@ export interface NormalizedUsage {
   behaviorCluster: 'high_frequency_low_token' | 'low_frequency_high_token' | 'uniform'
 }
 
-interface IntegrationRecord {
-  provider: string
-  access_token: string
+export interface UsageAnalysisResult {
+  normalizedUsage: NormalizedUsage[]
+  dailyRequestCounts: number[]
+  totalRequests: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  modelCount: number
+  frontierModelPercentage: number
+  dominantProvider: string
+  coverageStart: string | null
+  coverageEnd: string | null
+  latestCompleteDay: string | null
+  asOf: string | null
+  providerStatus: ProviderAnalysisStatus[]
 }
 
 type RawUsageRecord = Omit<NormalizedUsage, 'behaviorCluster'>
 
-export async function runUsageAnalyst(integrations: IntegrationRecord[]) {
-  const allUsage: NormalizedUsage[] = []
-  const allDailyCounts: number[] = []
+function minDate(left: string | null, right: string | null) {
+  if (!left) return right
+  if (!right) return left
+  return left < right ? left : right
+}
 
-  for (const integration of integrations) {
+function maxDate(left: string | null, right: string | null) {
+  if (!left) return right
+  if (!right) return left
+  return left > right ? left : right
+}
+
+export async function runUsageAnalyst(integrations: IntegrationRecord[]): Promise<UsageAnalysisResult> {
+  const allUsage: NormalizedUsage[] = []
+  const providerStatus: ProviderAnalysisStatus[] = []
+  const dailyRequestMap = new Map<string, number>()
+  let coverageStart: string | null = null
+  let coverageEnd: string | null = null
+  let latestCompleteDay: string | null = null
+  let asOf: string | null = null
+
+  for (const integration of integrations.filter((record) => record.provider === 'openai')) {
     try {
-      if (integration.provider === 'openai') {
-        const { normalizedUsage, dailyRequestCounts } = await getOpenAIUsage(integration.access_token)
-        allUsage.push(...normalizedUsage.map((u: RawUsageRecord) => ({ ...u, behaviorCluster: classifyBehavior(u) })))
-        allDailyCounts.push(...dailyRequestCounts)
+      const freshIntegration = await ensureFreshIntegration(integration)
+      const usage = await getOpenAIUsage(freshIntegration.access_token)
+
+      allUsage.push(
+        ...usage.normalizedUsage.map((record: RawUsageRecord) => ({
+          ...record,
+          behaviorCluster: classifyBehavior(record),
+        }))
+      )
+
+      for (const point of usage.dailyRequestSeries) {
+        dailyRequestMap.set(point.date, (dailyRequestMap.get(point.date) ?? 0) + point.requestCount)
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      console.error(`Usage fetch failed for ${integration.provider}:`, message)
+
+      coverageStart = minDate(coverageStart, usage.coverageStart)
+      coverageEnd = maxDate(coverageEnd, usage.coverageEnd)
+      latestCompleteDay = maxDate(latestCompleteDay, usage.latestCompleteDay)
+      asOf = maxDate(asOf, usage.asOf)
+
+      providerStatus.push(
+        buildProviderStatus({
+          provider: integration.provider,
+          status: 'fresh',
+          message: `OpenAI usage data loaded through ${usage.latestCompleteDay}.`,
+          coverageStart: usage.coverageStart,
+          coverageEnd: usage.coverageEnd,
+          latestCompleteDay: usage.latestCompleteDay,
+          asOf: usage.asOf,
+        })
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown OpenAI usage failure'
+      throw new Error(`OpenAI usage collection failed: ${message}`)
     }
   }
+
+  const dailyRequestCounts = [...dailyRequestMap.entries()]
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .map(([, requestCount]) => requestCount)
 
   const totalRequests = allUsage.reduce((s, u) => s + u.totalRequests, 0)
   const totalInputTokens = allUsage.reduce((s, u) => s + u.totalInputTokens, 0)
   const totalOutputTokens = allUsage.reduce((s, u) => s + u.totalOutputTokens, 0)
-
-  const frontierModels = ['gpt-4', 'claude-3-opus', 'gemini-ultra']
   const frontierRequests = allUsage
-    .filter(u => frontierModels.some(m => u.model.includes(m)))
+    .filter((usage) => isFrontierModel(usage.model))
     .reduce((s, u) => s + u.totalRequests, 0)
 
   const byProvider = allUsage.reduce((acc, u) => {
@@ -50,14 +112,19 @@ export async function runUsageAnalyst(integrations: IntegrationRecord[]) {
 
   return {
     normalizedUsage: allUsage,
-    dailyRequestCounts: allDailyCounts,
+    dailyRequestCounts,
     totalRequests,
     totalInputTokens,
     totalOutputTokens,
     modelCount: allUsage.length,
     frontierModelPercentage: totalRequests > 0
       ? Math.round((frontierRequests / totalRequests) * 100) : 0,
-    dominantProvider: Object.entries(byProvider).sort(([, a], [, b]) => b - a)[0]?.[0] || 'unknown'
+    dominantProvider: Object.entries(byProvider).sort(([, a], [, b]) => b - a)[0]?.[0] || 'unknown',
+    coverageStart,
+    coverageEnd,
+    latestCompleteDay,
+    asOf,
+    providerStatus,
   }
 }
 

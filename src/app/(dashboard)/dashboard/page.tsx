@@ -22,6 +22,8 @@ export default async function DashboardPage() {
   const mitigationStrategies = report.mitigation_strategies?.strategies
     ?? report.executive_summary?.mitigation_strategies
     ?? []
+  const dataFreshness = report.executive_summary?.data_freshness
+  const latestCompleteDay = dataFreshness?.latest_complete_day ?? dataFreshness?.coverage_end ?? null
 
   const carbonDelta = report.prev_carbon_kg
     ? Math.round(((report.carbon_kg - report.prev_carbon_kg) / report.prev_carbon_kg) * 100) : null
@@ -33,7 +35,10 @@ export default async function DashboardPage() {
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">AI Intelligence Brief</h1>
-          <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
+          <p className="text-gray-400 mt-1">
+            {company!.name} · {report.reporting_period}
+            {latestCompleteDay ? ` · Data through ${latestCompleteDay}` : ''}
+          </p>
         </div>
         <RerunAnalysisButton initialJobState={analysisJob} />
       </div>

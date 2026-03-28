@@ -1,12 +1,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { PostgrestError } from '@supabase/supabase-js'
 import { backboard, FALLBACK_TRANSLATOR_OUTPUT } from '@/lib/backboard/client'
+import {
+  buildUnsupportedProviderStatus,
+  deriveDataFreshness,
+} from '@/lib/analysis/provider-status'
+import { calculateCarbon } from '@/lib/calculations/carbon'
+import type { IntegrationRecord } from '@/lib/integrations/types'
 import { runUsageAnalyst } from './usage-analyst'
 import { runCarbonWaterAccountant } from './carbon-water-accountant'
 import { runLicenseIntelligence } from './license-intelligence'
 import { runStrategicTranslator, runStrategicTranslatorGemini } from './strategic-translator'
 import { runSynthesis } from './synthesis'
 import { runStatAnalysis } from '@/lib/analysis/run-stat-analysis'
+
+function throwIfSupabaseError(error: PostgrestError | null, context: string) {
+  if (error) {
+    throw new Error(`${context}: ${error.message}`)
+  }
+}
 
 export async function runPipeline(jobId: string, companyId: string) {
   const supabase = createAdminClient()
@@ -28,30 +41,64 @@ export async function runPipeline(jobId: string, companyId: string) {
     }
   }
 
-  const setStatus = async (status: string, agent?: string) =>
-    supabase.from('analysis_jobs').update({
+  const setStatus = async (status: string, agent?: string) => {
+    const { error } = await supabase.from('analysis_jobs').update({
       status, current_agent: agent || null,
       ...(status === 'running' && !agent ? { started_at: new Date().toISOString() } : {}),
       ...(['complete', 'failed'].includes(status) ? { completed_at: new Date().toISOString() } : {})
     }).eq('id', jobId)
 
-  const saveOutput = async (agentName: string, output: any) =>
-    supabase.from('agent_outputs').insert({ job_id: jobId, agent_name: agentName, output })
+    throwIfSupabaseError(error, `Failed to update analysis job ${jobId} to ${status}`)
+  }
+
+  const saveOutput = async (agentName: string, output: any) => {
+    const { error } = await supabase
+      .from('agent_outputs')
+      .insert({ job_id: jobId, agent_name: agentName, output })
+
+    throwIfSupabaseError(error, `Failed to persist ${agentName} output for job ${jobId}`)
+  }
+
+  const claimJobForExecution = async () => {
+    const startedAt = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('analysis_jobs')
+      .update({
+        status: 'running',
+        current_agent: null,
+        started_at: startedAt,
+      })
+      .eq('id', jobId)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+
+    throwIfSupabaseError(error, `Failed to claim analysis job ${jobId}`)
+
+    return Boolean(data?.id)
+  }
 
   // Safety net: if the pipeline hasn't finished within 4 minutes, mark it failed.
   // This fires even if an individual agent somehow escapes its own timeout.
   const PIPELINE_MAX_MS = 4 * 60 * 1000
   const pipelineGuard = setTimeout(async () => {
     console.error(`[Pipeline ${jobId}] Exceeded ${PIPELINE_MAX_MS / 1000}s, marking as failed`)
-    await supabase.from('analysis_jobs').update({
+    const { error } = await supabase.from('analysis_jobs').update({
       status: 'failed',
       error_message: 'Analysis exceeded the maximum allowed duration. Please try again.',
       completed_at: new Date().toISOString(),
     }).eq('id', jobId).in('status', ['pending', 'running'])
+    if (error) {
+      console.error(`[Pipeline ${jobId}] Failed to mark timed out job as failed:`, error.message)
+    }
   }, PIPELINE_MAX_MS)
 
   try {
-    await setStatus('running')
+    const claimed = await claimJobForExecution()
+    if (!claimed) {
+      clearTimeout(pipelineGuard)
+      return null
+    }
 
     // Attempt to create a Backboard thread for LLM-powered strategic analysis.
     // If Backboard is unavailable the pipeline continues without it.
@@ -80,6 +127,7 @@ export async function runPipeline(jobId: string, companyId: string) {
 
     const { data: integrations } = await supabase.from('integrations').select('*')
       .eq('company_id', companyId).eq('is_active', true)
+    const activeIntegrations = (integrations ?? []) as IntegrationRecord[]
 
     const { data: company } = await supabase.from('companies').select('*')
       .eq('id', companyId).single()
@@ -94,12 +142,18 @@ export async function runPipeline(jobId: string, companyId: string) {
       })).catch(e => console.warn('Backboard message failed:', e.message))
     }
 
+    const precomputedCarbon = await withTimeout(
+      'Carbon baseline',
+      calculateCarbon(usageResult.normalizedUsage),
+      10000
+    )
+
     // ── STAT ANALYSIS ─────────────────────────────────────────────────
     await setStatus('running', 'stat_analysis')
     const statResult = await runStatAnalysis({
       normalizedUsage: usageResult.normalizedUsage,
       dailyRequestCounts: usageResult.dailyRequestCounts || [],
-      totalCarbonKg: 0,
+      totalCarbonKg: precomputedCarbon.totalCarbonKg,
       industry: company?.industry || 'default'
     })
     await saveOutput('stat_analysis', statResult)
@@ -111,7 +165,11 @@ export async function runPipeline(jobId: string, companyId: string) {
 
     // ── AGENT 2: Carbon & Water Accountant ────────────────────────────
     await setStatus('running', 'carbon_water_accountant')
-    const carbonWaterResult = await withTimeout('Carbon & water accountant', runCarbonWaterAccountant(usageResult, statResult), 15000)
+    const carbonWaterResult = await withTimeout(
+      'Carbon & water accountant',
+      runCarbonWaterAccountant(usageResult, statResult, precomputedCarbon),
+      15000
+    )
     await saveOutput('carbon_water_accountant', carbonWaterResult)
     if (threadId) {
       backboard.sendMessage(threadId, JSON.stringify({
@@ -167,12 +225,33 @@ export async function runPipeline(jobId: string, companyId: string) {
     }
     await saveOutput('strategic_translator', translatorResult)
 
+    const providerStatuses = [
+      ...usageResult.providerStatus,
+      ...licenseResult.providerStatus,
+      ...activeIntegrations
+        .filter((integration) =>
+          integration.provider !== 'openai' &&
+          integration.provider !== 'microsoft'
+        )
+        .map((integration) =>
+          buildUnsupportedProviderStatus(
+            integration.provider,
+            `${integration.provider} is connected but is not yet included in the automated analysis pipeline.`
+          )
+        ),
+    ]
+    const dataFreshness = deriveDataFreshness(providerStatuses)
+
     // ── SYNTHESIS ─────────────────────────────────────────────────────
     await setStatus('running', 'synthesis')
     const reportId = await withTimeout('Synthesis', runSynthesis(jobId, companyId, {
       usage: usageResult, carbonWater: carbonWaterResult,
       license: licenseResult, translator: translatorResult,
-      statAnalysis: statResult
+      statAnalysis: statResult,
+      meta: {
+        dataFreshness,
+        providerStatuses,
+      },
     }), 30000)
 
     await setStatus('complete')
@@ -181,10 +260,13 @@ export async function runPipeline(jobId: string, companyId: string) {
 
   } catch (error: any) {
     clearTimeout(pipelineGuard)
-    await supabase.from('analysis_jobs').update({
+    const { error: updateError } = await supabase.from('analysis_jobs').update({
       status: 'failed', error_message: error.message,
       completed_at: new Date().toISOString()
     }).eq('id', jobId)
+    if (updateError) {
+      console.error(`[Pipeline ${jobId}] Failed to mark job as failed:`, updateError.message)
+    }
     throw error
   }
 }

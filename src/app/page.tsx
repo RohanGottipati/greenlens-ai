@@ -46,7 +46,7 @@ export default function Home() {
           {/* CTA */}
           <div className="hidden md:flex items-center gap-4">
             <Link href="/login" className="text-sm text-white/75 hover:text-white transition-colors px-3 py-2">
-              Log in
+              Login
             </Link>
             <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium">
               Get a sample report
@@ -64,10 +64,14 @@ export default function Home() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-black/60 border-t border-white/10">
+          <div className="md:hidden bg-black/60 border-t border-white/10 backdrop-blur-md">
             <div className="container-custom py-4 flex flex-col gap-3">
+              <a href="#problem" className="text-sm text-white/75 hover:text-white py-1">Problem</a>
+              <a href="#solution" className="text-sm text-white/75 hover:text-white py-1">Solution</a>
+              <a href="#product" className="text-sm text-white/75 hover:text-white py-1">Product</a>
+              <a href="#how-it-works" className="text-sm text-white/75 hover:text-white py-1">How it works</a>
               <Link href="/login" className="text-sm text-white/75 hover:text-white py-1">
-                Log in
+                Login
               </Link>
               <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium text-center">
                 Get a sample report
@@ -77,35 +81,35 @@ export default function Home() {
         )}
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative hero-nature-bg overflow-hidden min-h-screen flex flex-col justify-center">
-        <div className="flex items-center gap-8 w-full">
+      {/* Hero Section — vertically centered in viewport below fixed nav */}
+      <section className="relative hero-nature-bg overflow-hidden min-h-[100dvh] flex flex-col">
+        <div className="flex-1 flex flex-col lg:flex-row lg:items-center justify-center gap-8 lg:gap-10 xl:gap-14 w-full max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 pt-24 pb-14 lg:py-8">
           {/* Left: Text */}
-          <div className="pl-20 lg:pl-28 shrink-0 w-[48%]">
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
+          <div className="w-full lg:w-[min(42%,26rem)] shrink-0 text-center lg:text-left max-w-lg mx-auto lg:mx-0">
+            <h1 className="text-[2rem] sm:text-[2.125rem] lg:text-[2.25rem] xl:text-[2.5rem] font-medium tracking-tight leading-snug mb-6 text-white text-balance">
               Measure the environmental cost of your enterprise AI
             </h1>
 
-            <div className="flex flex-col sm:flex-row items-start gap-4 fade-in-up animation-delay-100">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-center lg:justify-start gap-2 sm:gap-3">
               <Link
                 href="/login"
-                className="btn-primary text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto flex items-center justify-center gap-2"
+                className="btn-primary text-sm px-4 py-2 rounded-md font-medium w-full sm:w-auto flex items-center justify-center gap-1.5"
               >
                 Get a sample report
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
               <a
                 href="#how-it-works"
-                className="btn-secondary-dark text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto text-center"
+                className="btn-secondary-dark text-sm px-4 py-2 rounded-md font-medium w-full sm:w-auto text-center"
               >
                 See how it works
               </a>
             </div>
           </div>
 
-          {/* Right: Dashboard mockup — flush to right edge */}
-          <div className="flex-1 fade-in-up animation-delay-200 flex justify-center items-center px-8">
-            <div className="dashboard-shadow rounded-tl-lg rounded-tr-lg overflow-hidden border-t border-l border-r border-white/10 w-full">
+          {/* Right: Dashboard mockup */}
+          <div className="flex-1 min-w-0 w-full flex justify-center lg:justify-end items-center">
+            <div className="dashboard-shadow rounded-xl overflow-hidden border border-white/15 bg-white/95 w-full max-w-xl lg:max-w-2xl xl:max-w-3xl">
               <ExecutiveReport />
             </div>
           </div>

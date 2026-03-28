@@ -14,15 +14,25 @@ function isTimeoutOrAbort(e: unknown): boolean {
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const apiKey = typeof body.apiKey === 'string' ? body.apiKey.trim() : ''
-  // User / project / service account secrets all start with sk- (trimmed above).
+  const yesterdayStart = new Date()
+  yesterdayStart.setUTCHours(0, 0, 0, 0)
+  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1)
+  const startTime = Math.floor(yesterdayStart.getTime() / 1000)
+  const usageValidationUrl = new URL('https://api.openai.com/v1/organization/usage/completions')
+  usageValidationUrl.searchParams.set('start_time', String(startTime))
+  usageValidationUrl.searchParams.set('bucket_width', '1d')
+  usageValidationUrl.searchParams.set('limit', '1')
+  usageValidationUrl.searchParams.append('group_by', 'model')
+
   if (!apiKey || !apiKey.startsWith('sk-') || apiKey.length < 20) {
     return NextResponse.json({
-      error: 'Paste your full secret key from platform.openai.com/api-keys (long string starting with sk-).'
+      error: 'Paste your OpenAI organization admin key from platform.openai.com/api-keys (starts with sk- or sk-admin-).'
     }, { status: 400 })
   }
   try {
-    // Validate with /v1/models — works for normal API keys.
-    const testResponse = await fetch('https://api.openai.com/v1/models?limit=1', {
+    // Validate against the organization Usage API because the analysis workflow
+    // depends on org-level usage access, not standard model inference access.
+    const testResponse = await fetch(usageValidationUrl, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(OPENAI_VERIFY_TIMEOUT_MS)
     })
@@ -34,10 +44,10 @@ export async function POST(request: NextRequest) {
       let detail: string
       if (testResponse.status === 401) {
         detail = openaiMsg
-          ? `${openaiMsg} Create a new key at https://platform.openai.com/api-keys and paste it exactly (no spaces).`
-          : 'OpenAI rejected this key (401). Create a new secret key at https://platform.openai.com/api-keys — copy the full value, no leading/trailing spaces.'
+          ? `${openaiMsg} Create an organization admin key at https://platform.openai.com/api-keys and paste it exactly (no spaces).`
+          : 'OpenAI rejected this key (401). Create an organization admin key at https://platform.openai.com/api-keys and paste the full value exactly.'
       } else {
-        detail = openaiMsg ?? `OpenAI returned ${testResponse.status}. Check billing and API access at platform.openai.com.`
+        detail = openaiMsg ?? `OpenAI returned ${testResponse.status}. Check organization usage access at platform.openai.com.`
       }
       return NextResponse.json({ error: detail }, { status: 400 })
     }

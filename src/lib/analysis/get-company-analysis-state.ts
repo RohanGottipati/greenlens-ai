@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { buildAnalysisJobState, type AnalysisJobState } from '@/lib/analysis/state'
+import {
+  ANALYSIS_FINALIZING_TIMEOUT_MESSAGE,
+  buildAnalysisJobState,
+  buildFailedAnalysisJobState,
+  hasFinalizingTimedOut,
+  type AnalysisJobState,
+} from '@/lib/analysis/state'
 
 interface CompanyAnalysisState {
   analysisJob: AnalysisJobState | null
@@ -11,7 +17,7 @@ export async function getCompanyAnalysisState(
 ): Promise<CompanyAnalysisState> {
   const { data: latestJob } = await supabase
     .from('analysis_jobs')
-    .select('id, status, current_agent, error_message')
+    .select('id, status, current_agent, error_message, completed_at')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -31,6 +37,12 @@ export async function getCompanyAnalysisState(
       .maybeSingle()
 
     reportId = reportForJob?.id ?? null
+  }
+
+  if (hasFinalizingTimedOut(latestJob, reportId)) {
+    return {
+      analysisJob: buildFailedAnalysisJobState(latestJob.id, ANALYSIS_FINALIZING_TIMEOUT_MESSAGE),
+    }
   }
 
   return {

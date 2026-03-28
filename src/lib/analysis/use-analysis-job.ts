@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  ANALYSIS_FINALIZING_TIMEOUT_MS,
+  ANALYSIS_POLLING_TIMEOUT_MS,
+  ANALYSIS_POLL_INTERVAL_MS,
   isActiveAnalysisStatus,
   type AnalysisJobState,
 } from '@/lib/analysis/state'
+import { shouldApplyPollResponse } from '@/lib/analysis/polling-sequencing'
 
 interface UseAnalysisJobOptions {
   initialJobState?: AnalysisJobState | null
@@ -32,24 +36,34 @@ function getStatusMessage(jobState: AnalysisJobState | null) {
   return null
 }
 
-// If the client has been polling for longer than this without a terminal state, bail out.
-const POLLING_TIMEOUT_MS = 6 * 60 * 1000
-
 export function useAnalysisJob({
   initialJobState = null,
   onComplete,
 }: UseAnalysisJobOptions) {
   const [jobState, setJobState] = useState<AnalysisJobState | null>(initialJobState)
   const [error, setError] = useState<string | null>(initialJobState?.error_message ?? null)
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollAbortRef = useRef<AbortController | null>(null)
   const pollStartRef = useRef<number | null>(null)
+  const pollSessionRef = useRef(0)
+  const requestTokenRef = useRef(0)
+  const appliedTokenRef = useRef(0)
+  const finalizingStartedAtRef = useRef<number | null>(null)
 
   const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
+    pollSessionRef.current += 1
+
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
     }
+    if (pollAbortRef.current) {
+      pollAbortRef.current.abort()
+      pollAbortRef.current = null
+    }
+
     pollStartRef.current = null
+    finalizingStartedAtRef.current = null
   }, [])
 
   const handleTerminalState = useCallback((nextState: AnalysisJobState) => {
@@ -65,20 +79,66 @@ export function useAnalysisJob({
     }
   }, [onComplete])
 
-  const pollStatus = useCallback(async (jobId: string) => {
+  function schedulePoll(jobId: string, sessionId: number, delayMs = ANALYSIS_POLL_INTERVAL_MS) {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current)
+    }
+    pollTimerRef.current = setTimeout(() => {
+      void pollStatus(jobId, sessionId)
+    }, delayMs)
+  }
+
+  const pollStatus = useCallback(async (jobId: string, sessionId = pollSessionRef.current) => {
+    if (sessionId !== pollSessionRef.current) {
+      return
+    }
+
     // Client-side safety valve: stop polling if we've been waiting too long.
-    if (pollStartRef.current && Date.now() - pollStartRef.current > POLLING_TIMEOUT_MS) {
+    if (pollStartRef.current && Date.now() - pollStartRef.current > ANALYSIS_POLLING_TIMEOUT_MS) {
       stopPolling()
       setError('Analysis is taking longer than expected. Please reload the page and try again.')
       return
     }
 
+    const requestToken = ++requestTokenRef.current
+    const controller = new AbortController()
+    pollAbortRef.current = controller
+
     try {
-      const response = await fetch(`/api/pipeline/status?jobId=${jobId}`, { cache: 'no-store' })
+      const response = await fetch(`/api/pipeline/status?jobId=${jobId}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       if (!response.ok) throw new Error('Failed to fetch analysis status')
 
       const data = await response.json() as AnalysisJobState
+
+      if (!shouldApplyPollResponse(
+        pollSessionRef.current,
+        sessionId,
+        requestToken,
+        appliedTokenRef.current
+      )) {
+        return
+      }
+
+      appliedTokenRef.current = requestToken
       setJobState(data)
+
+      if (data.status === 'finalizing') {
+        finalizingStartedAtRef.current ??= Date.now()
+      } else {
+        finalizingStartedAtRef.current = null
+      }
+
+      if (
+        finalizingStartedAtRef.current &&
+        Date.now() - finalizingStartedAtRef.current > ANALYSIS_FINALIZING_TIMEOUT_MS
+      ) {
+        stopPolling()
+        setError('Analysis finished but the report did not update. Please rerun the analysis.')
+        return
+      }
 
       if (data.status === 'failed' || (data.status === 'complete' && data.reportId)) {
         stopPolling()
@@ -87,19 +147,28 @@ export function useAnalysisJob({
       }
 
       setError(null)
+      schedulePoll(jobId, sessionId)
     } catch (pollError) {
+      if (controller.signal.aborted || sessionId !== pollSessionRef.current) {
+        return
+      }
+
       stopPolling()
       setError(pollError instanceof Error ? pollError.message : 'Failed to fetch analysis status')
+    } finally {
+      if (pollAbortRef.current === controller) {
+        pollAbortRef.current = null
+      }
     }
   }, [handleTerminalState, stopPolling])
 
   const startPolling = useCallback((jobId: string) => {
     stopPolling()
+    requestTokenRef.current = 0
+    appliedTokenRef.current = 0
     pollStartRef.current = Date.now()
-    void pollStatus(jobId)
-    pollIntervalRef.current = setInterval(() => {
-      void pollStatus(jobId)
-    }, 3000)
+    const sessionId = pollSessionRef.current
+    void pollStatus(jobId, sessionId)
   }, [pollStatus, stopPolling])
 
   const triggerAnalysis = useCallback(async () => {

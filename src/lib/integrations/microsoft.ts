@@ -34,6 +34,31 @@ export async function getMicrosoftAccessToken(tenantId: string, clientId: string
   return response.data.access_token
 }
 
+export async function refreshMicrosoftAccessToken(refreshToken: string) {
+  const tenantId = process.env.MICROSOFT_TENANT_ID ?? 'common'
+  const response = await axios.post(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.MICROSOFT_CLIENT_ID!,
+      client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      scope: [
+        'https://graph.microsoft.com/Reports.Read.All',
+        'https://graph.microsoft.com/Directory.Read.All',
+        'offline_access',
+      ].join(' '),
+    }),
+    { timeout: MICROSOFT_API_TIMEOUT_MS }
+  )
+
+  return response.data as {
+    access_token: string
+    expires_in?: number
+    refresh_token?: string
+  }
+}
+
 // Microsoft Graph Reports API.
 // Returns aggregate organizational Copilot utilization.
 // Collection methodology: Microsoft Graph Reports API (getMicrosoft365CopilotUsageUserDetail).
@@ -44,9 +69,10 @@ export async function getMicrosoftCopilotUsage(accessToken: string) {
   if (accessToken === DEMO_SENTINEL_MICROSOFT) return getFakeMicrosoftCopilotUsage()
 
   const response = await axios.get(
-    `https://graph.microsoft.com/v1.0/reports/getMicrosoft365CopilotUsageUserDetail(period='D30')`,
+    `https://graph.microsoft.com/beta/reports/getMicrosoft365CopilotUsageUserDetail(period='D30')`,
     {
       headers: { Authorization: `Bearer ${accessToken}` },
+      params: { '$format': 'application/json' },
       timeout: MICROSOFT_API_TIMEOUT_MS
     }
   )

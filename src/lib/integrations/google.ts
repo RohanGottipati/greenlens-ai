@@ -17,6 +17,24 @@ export async function getGoogleAccessToken(code: string, redirectUri: string) {
   return response.data
 }
 
+export async function refreshGoogleAccessToken(refreshToken: string) {
+  const response = await axios.post(
+    'https://oauth2.googleapis.com/token',
+    new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+    }),
+    { timeout: GOOGLE_API_TIMEOUT_MS }
+  )
+  return response.data as {
+    access_token: string
+    expires_in?: number
+    refresh_token?: string
+  }
+}
+
 // Google Workspace Admin SDK — Directory API.
 // Returns aggregate license counts for Gemini for Workspace SKUs.
 // No individual user content, messages, or prompts are accessible through this API.

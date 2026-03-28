@@ -51,22 +51,43 @@ export function getFakeOpenAIUsage() {
     },
   ]
 
-  // 30 daily request counts, index 0 = yesterday, index 29 = 30 days ago.
-  // Realistic weekday/weekend pattern for a mid-size tech company.
   const dailyRequestCounts = [
-    // Most recent week (working backwards from yesterday = Friday)
-    812, 848, 793, 827, 761, 243, 217,
-    // Week 2
-    836, 819, 774, 808, 745, 256, 229,
-    // Week 3
-    851, 830, 788, 762, 718, 264, 241,
-    // Week 4
-    823, 797, 751, 739, 703, 238, 212,
-    // Days 29–30 (Mon–Tue)
-    814, 778,
+    778, 814,
+    212, 238, 703, 739, 751, 797, 823,
+    241, 264, 718, 762, 788, 830, 851,
+    229, 256, 745, 808, 774, 819, 836,
+    217, 243, 761, 827, 793, 848, 812,
   ]
 
-  return { normalizedUsage, dailyRequestCounts }
+  const today = new Date()
+  const utcStartOfToday = new Date(Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate()
+  ))
+  const coverageEndDate = new Date(utcStartOfToday.getTime() - 24 * 60 * 60 * 1000)
+  const coverageStartDate = new Date(utcStartOfToday.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+  const coverageEnd = coverageEndDate.toISOString().split('T')[0]
+  const coverageStart = coverageStartDate.toISOString().split('T')[0]
+  const asOf = new Date().toISOString()
+  const dailyRequestSeries = dailyRequestCounts.map((requestCount, index) => {
+    const date = new Date(coverageStartDate.getTime() + index * 24 * 60 * 60 * 1000)
+    return {
+      date: date.toISOString().split('T')[0],
+      requestCount,
+    }
+  })
+
+  return {
+    normalizedUsage,
+    dailyRequestCounts,
+    dailyRequestSeries,
+    coverageStart,
+    coverageEnd,
+    latestCompleteDay: coverageEnd,
+    asOf,
+  }
 }
 
 // ---------------------------------------------------------------------------
