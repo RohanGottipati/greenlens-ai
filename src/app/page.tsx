@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
@@ -19,24 +19,126 @@ import {
 } from 'lucide-react';
 import ExecutiveReport from '@/components/landing/ExecutiveReport';
 
+const RadarVisual = memo(function RadarVisual() {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="relative flex justify-center">
+        <svg viewBox="0 0 300 300" className="w-200 h-200">
+          <defs>
+            <linearGradient id="sweepGradient" x1="150" y1="150" x2="274" y2="78" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#86efac" stopOpacity="0" />
+              <stop offset="70%" stopColor="#86efac" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#86efac" stopOpacity="0.45" />
+            </linearGradient>
+          </defs>
+
+          <line x1="5" y1="150" x2="295" y2="150" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+          <line x1="150" y1="5" x2="150" y2="295" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+          <line x1="47" y1="47" x2="253" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
+          <line x1="253" y1="47" x2="47" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
+
+          {[36, 72, 108, 144].map(r => (
+            <circle key={r} cx="150" cy="150" r={r} fill="none" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
+          ))}
+          <circle cx="150" cy="150" r="145" fill="none" stroke="#4C7060" strokeOpacity="0.25" strokeWidth="1" />
+
+          <g>
+            <animateTransform attributeName="transform" type="rotate" from="0 150 150" to="360 150 150" dur="8s" repeatCount="indefinite" />
+            <path d="M150,150 L150,6 A144,144 0 0,1 274.6,78 Z" fill="url(#sweepGradient)" />
+            <line x1="150" y1="150" x2="150" y2="6" stroke="#86efac" strokeOpacity="0.2" strokeWidth="1" />
+          </g>
+
+          <g>
+            <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.13;0.14;0.49;1" dur="8s" repeatCount="indefinite" />
+            <circle cx="208" cy="98" r="4" fill="#ef4444" />
+            <text x="202" y="90" fill="#ef4444" fontSize="8" fontFamily="monospace" textAnchor="end">DATA_ERROR: NULL</text>
+          </g>
+
+          <g>
+            <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.636;0.646;0.986;1" dur="8s" repeatCount="indefinite" />
+            <circle cx="92" cy="198" r="3" fill="#60a5fa" />
+            <text x="98" y="194" fill="#60a5fa" fontSize="8" fontFamily="monospace" textAnchor="start">WATER_INDEX: NA</text>
+          </g>
+
+          <g>
+            <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.362;0.372;0.722;1" dur="8s" repeatCount="indefinite" />
+            <circle cx="215" cy="205" r="4" fill="#f59e0b" />
+            <text x="209" y="216" fill="#f59e0b" fontSize="8" fontFamily="monospace" textAnchor="end">CARBON: UNKNOWN</text>
+          </g>
+
+          <g>
+            <animate attributeName="opacity" values="0.45;0;0;1;0.45" keyTimes="0;0.22;0.864;0.874;1" dur="8s" repeatCount="indefinite" />
+            <circle cx="75" cy="85" r="3" fill="#ef4444" />
+            <text x="81" y="82" fill="#ef4444" fontSize="8" fontFamily="monospace">ESG: NO_DATA</text>
+          </g>
+        </svg>
+
+        <div className="absolute bottom-[14%] left-[2%] bg-white border border-[#e5e5e5] rounded-lg p-6 card-hover w-80">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[#888] text-xs font-mono tracking-widest">SYSTEM_STATUS</span>
+            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+          </div>
+          <div className="w-full h-1 bg-[#f0f0f0] rounded-full overflow-hidden mb-3">
+            <div className="h-full bg-red-400 rounded-full" style={{ width: '15%' }} />
+          </div>
+          <p className="text-xs font-mono">
+            <span className="text-[#888]">Visibility Index: </span>
+            <span className="text-red-500 font-semibold">CRITICAL</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function Home() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [solutionTab, setSolutionTab] = useState(0);
   const [navSolid, setNavSolid] = useState(false);
+  const problemWrapperRef = useRef<HTMLDivElement>(null);
+  const [problemProgress, setProblemProgress] = useState(0);
 
   useEffect(() => {
     const handleScroll = () => {
       setNavSolid(window.scrollY > window.innerHeight * 0.8);
+
+      if (problemWrapperRef.current) {
+        const rect = problemWrapperRef.current.getBoundingClientRect();
+        const progress = Math.min(1, Math.max(0, -rect.top / (2 * window.innerHeight)));
+        setProblemProgress(progress);
+      }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  const fullText = "Leadership teams are making AI investment decisions in the dark."
+  const beforeDark = "Leadership teams are making AI investment decisions in the "
+
+  // Typewriter completes by progress 0.4, dark screen dwells 0.4→0.65, fades 0.65→0.85
+  const typeProgress = Math.min(1, problemProgress / 0.4)
+  const charCount = Math.floor(typeProgress * fullText.length)
+
+  const textBeforeDark = beforeDark.slice(0, Math.min(charCount, beforeDark.length))
+  const darkCharsShown = Math.max(0, charCount - beforeDark.length)
+  const darkText = "dark".slice(0, Math.min(darkCharsShown, 4))
+  const dotVisible = charCount >= fullText.length - 1
+  const overlayDark = darkCharsShown > 0
+
+  const overlayOpacity = problemProgress < 0.65
+    ? 1
+    : problemProgress > 0.85
+      ? 0
+      : 1 - (problemProgress - 0.65) / 0.2;
+
   return (
     <div className="min-h-screen bg-white text-[#1a1a1a]">
       {/* Navigation */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${navSolid ? 'bg-[#243d30] border-b border-[#1a2e23]' : 'glass-header'}`}>
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${navSolid ? 'bg-[#243d30] border-b border-[#1a2e23]' : 'glass-header'}`}
+        style={{ opacity: 1 - overlayOpacity, pointerEvents: overlayOpacity > 0.05 ? 'none' : 'auto', transition: 'opacity 80ms linear' }}
+      >
         <div className="flex items-center justify-between h-16 px-6 lg:px-10">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
@@ -123,117 +225,81 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Problem Section */}
-      <section id="problem" className="py-24 lg:py-32 bg-[#fafafa]">
-        <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
+      {/* Problem Section — pinned scroll wrapper */}
+      <div id="problem" ref={problemWrapperRef} style={{ height: '300vh' }}>
+        <section style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'hidden' }}>
 
-            {/* Left: Text */}
-            <div className="px-10 lg:px-20">
-              <p className="text-[#4C7060] text-lg font-medium tracking-widest uppercase mb-6">
-                The Visibility Gap
-              </p>
-              <h2 className="text-5xl sm:text-6xl font-medium tracking-tight mb-10 text-[#1a1a1a] leading-[1.15]">
-                Leadership teams are making AI investment decisions in the dark.
-                <span className="highlight-cycle mt-4" style={{ animationDelay: '0s' }}>No carbon data.</span>
-                <span className="highlight-cycle" style={{ animationDelay: '2s' }}>No water metrics.</span>
-                <span className="highlight-cycle" style={{ animationDelay: '4s' }}>No license utilization insights.</span>
-              </h2>
+          {/* Phase 2: actual content (bottom layer) */}
+          <div className="bg-[#fafafa]" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+            <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
 
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 border border-[#4C7060] text-[#4C7060] hover:bg-[#4C7060] hover:text-white transition-colors px-6 py-3 rounded-md text-sm font-medium"
-              >
-                Request a demo <ArrowRight className="w-4 h-4" />
-              </Link>
+              {/* Left: Text */}
+              <div className="px-10 lg:px-20">
+                <p className="text-[#4C7060] text-lg font-medium tracking-widest uppercase mb-6">
+                  The Visibility Gap
+                </p>
+                <h2 className="text-5xl sm:text-6xl font-medium tracking-tight mb-10 text-[#1a1a1a] leading-[1.15]">
+                  Leadership teams are making AI investment decisions in the dark.
+                  <span className="highlight-cycle mt-4" style={{ animationDelay: '0s' }}>No carbon data.</span>
+                  <span className="highlight-cycle" style={{ animationDelay: '2s' }}>No water metrics.</span>
+                  <span className="highlight-cycle" style={{ animationDelay: '4s' }}>No license utilization insights.</span>
+                </h2>
+
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 border border-[#4C7060] text-[#4C7060] hover:bg-[#4C7060] hover:text-white transition-colors px-6 py-3 rounded-md text-sm font-medium"
+                >
+                  Request a demo <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+
+              {/* Right: Radar visual */}
+              <RadarVisual />
+
             </div>
+          </div>
 
-            {/* Right: Radar visual */}
-            <div className="flex flex-col gap-4">
-              {/* Radar screen + status card overlay */}
-              <div className="relative flex justify-center">
-                <svg viewBox="0 0 300 300" className="w-200 h-200">
-                  <defs>
-                    <linearGradient id="sweepGradient" x1="150" y1="150" x2="274" y2="78" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%" stopColor="#86efac" stopOpacity="0" />
-                      <stop offset="70%" stopColor="#86efac" stopOpacity="0.15" />
-                      <stop offset="100%" stopColor="#86efac" stopOpacity="0.45" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Crosshair lines */}
-                  <line x1="5" y1="150" x2="295" y2="150" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
-                  <line x1="150" y1="5" x2="150" y2="295" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
-                  <line x1="47" y1="47" x2="253" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
-                  <line x1="253" y1="47" x2="47" y2="253" stroke="#4C7060" strokeOpacity="0.08" strokeWidth="0.5" />
-
-                  {/* Concentric rings */}
-                  {[36, 72, 108, 144].map(r => (
-                    <circle key={r} cx="150" cy="150" r={r} fill="none" stroke="#4C7060" strokeOpacity="0.15" strokeWidth="0.5" />
-                  ))}
-                  <circle cx="150" cy="150" r="145" fill="none" stroke="#4C7060" strokeOpacity="0.25" strokeWidth="1" />
-
-                  {/* Rotating sweep */}
-                  <g>
-                    <animateTransform
-                      attributeName="transform"
-                      type="rotate"
-                      from="0 150 150"
-                      to="360 150 150"
-                      dur="8s"
-                      repeatCount="indefinite"
-                    />
-                    <path d="M150,150 L150,6 A144,144 0 0,1 274.6,78 Z" fill="url(#sweepGradient)" />
-                    <line x1="150" y1="150" x2="150" y2="6" stroke="#86efac" strokeOpacity="0.2" strokeWidth="1" />
-                  </g>
-
-                  {/* Blip 1 — appears at ~48° into sweep */}
-                  <g>
-                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.13;0.14;0.49;1" dur="8s" repeatCount="indefinite" />
-                    <circle cx="208" cy="98" r="4" fill="#ef4444" />
-                    <text x="202" y="90" fill="#ef4444" fontSize="8" fontFamily="monospace" textAnchor="end">DATA_ERROR: NULL</text>
-                  </g>
-
-                  {/* Blip 2 — appears at ~230° into sweep */}
-                  <g>
-                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.636;0.646;0.986;1" dur="8s" repeatCount="indefinite" />
-                    <circle cx="92" cy="198" r="3" fill="#60a5fa" />
-                    <text x="98" y="194" fill="#60a5fa" fontSize="8" fontFamily="monospace" textAnchor="start">WATER_INDEX: NA</text>
-                  </g>
-
-                  {/* Blip 3 — appears at ~130° into sweep */}
-                  <g>
-                    <animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.362;0.372;0.722;1" dur="8s" repeatCount="indefinite" />
-                    <circle cx="215" cy="205" r="4" fill="#f59e0b" />
-                    <text x="209" y="216" fill="#f59e0b" fontSize="8" fontFamily="monospace" textAnchor="end">CARBON: UNKNOWN</text>
-                  </g>
-
-                  {/* Blip 4 — appears at ~311° into sweep, wraps fade into next cycle */}
-                  <g>
-                    <animate attributeName="opacity" values="0.45;0;0;1;0.45" keyTimes="0;0.22;0.864;0.874;1" dur="8s" repeatCount="indefinite" />
-                    <circle cx="75" cy="85" r="3" fill="#ef4444" />
-                    <text x="81" y="82" fill="#ef4444" fontSize="8" fontFamily="monospace">ESG: NO_DATA</text>
-                  </g>
-                </svg>
-
-                {/* Status card — anchored to bottom-left of radar */}
-                <div className="absolute bottom-[14%] left-[2%] bg-white border border-[#e5e5e5] rounded-lg p-6 card-hover w-80">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-[#888] text-xs font-mono tracking-widest">SYSTEM_STATUS</span>
-                    <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                  </div>
-                  <div className="w-full h-1 bg-[#f0f0f0] rounded-full overflow-hidden mb-3">
-                    <div className="h-full bg-red-400 rounded-full" style={{ width: '15%' }} />
-                  </div>
-                  <p className="text-xs font-mono">
-                    <span className="text-[#888]">Visibility Index: </span>
-                    <span className="text-red-500 font-semibold">CRITICAL</span>
-                  </p>
-                </div>
+          {/* Phase 1: typewriter overlay (top layer, fades out on scroll) */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundColor: overlayDark ? '#000' : '#fff',
+              opacity: overlayOpacity,
+              pointerEvents: overlayOpacity < 0.05 ? 'none' : 'auto',
+              transition: 'background-color 200ms ease',
+              display: 'flex',
+              alignItems: 'center',
+              zIndex: 10,
+            }}
+          >
+            <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
+              <div className="px-10 lg:px-20">
+                <p className="text-lg font-medium tracking-widest uppercase mb-6 invisible">
+                  The Visibility Gap
+                </p>
+                <h2
+                  className="text-5xl sm:text-6xl font-medium tracking-tight leading-[1.15] mb-10"
+                  style={{ color: overlayDark ? '#fff' : '#1a1a1a' }}
+                >
+                  {textBeforeDark}
+                  {darkCharsShown > 0 && (
+                    <strong style={{ color: '#FFD700', fontWeight: 700 }}>{darkText}</strong>
+                  )}
+                  {dotVisible && '.'}
+                  <span className="highlight-cycle mt-4 invisible">No carbon data.</span>
+                  <span className="highlight-cycle invisible">No water metrics.</span>
+                  <span className="highlight-cycle invisible">No license utilization insights.</span>
+                </h2>
+                <span className="inline-flex px-6 py-3 text-sm font-medium invisible">
+                  Request a demo
+                </span>
               </div>
             </div>
+          </div>
 
-        </div>
-      </section>
+        </section>
+      </div>
 
       <div className="section-divider" />
 
