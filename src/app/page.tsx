@@ -26,53 +26,50 @@ export default function Home() {
     <div className="min-h-screen bg-white text-[#1a1a1a]">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass-header">
-        <div className="container-custom">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-[#4C7060] flex items-center justify-center">
-                <BarChart3 className="w-5 h-5 text-white" strokeWidth={1.5} />
-              </div>
-              <span className="font-medium text-lg tracking-tight text-[#1a1a1a]">GreenLens AI</span>
-            </Link>
-
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#problem" className="text-sm text-[#666] hover:text-[#1a1a1a] transition-colors">Problem</a>
-              <a href="#solution" className="text-sm text-[#666] hover:text-[#1a1a1a] transition-colors">Solution</a>
-              <a href="#product" className="text-sm text-[#666] hover:text-[#1a1a1a] transition-colors">Product</a>
-              <a href="#how-it-works" className="text-sm text-[#666] hover:text-[#1a1a1a] transition-colors">How it works</a>
+        <div className="flex items-center justify-between h-16 px-6 lg:px-10">
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-md bg-[#4C7060] flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-white" strokeWidth={1.5} />
             </div>
+            <span className="font-medium text-lg tracking-tight text-white">GreenLens AI</span>
+          </Link>
 
-            {/* CTA */}
-            <div className="hidden md:flex items-center gap-4">
-              <Link href="/login" className="text-sm text-[#666] hover:text-[#1a1a1a] transition-colors px-3 py-2">
-                Log in
-              </Link>
-              <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium">
-                Get a sample report
-              </Link>
-            </div>
-
-            {/* Mobile menu button */}
-            <button
-              className="md:hidden p-2"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex items-center gap-8">
+            <a href="#problem" className="text-sm text-white/75 hover:text-white transition-colors">Problem</a>
+            <a href="#solution" className="text-sm text-white/75 hover:text-white transition-colors">Solution</a>
+            <a href="#product" className="text-sm text-white/75 hover:text-white transition-colors">Product</a>
+            <a href="#how-it-works" className="text-sm text-white/75 hover:text-white transition-colors">How it works</a>
           </div>
+
+          {/* CTA */}
+          <div className="hidden md:flex items-center gap-4">
+            <Link href="/login" className="text-sm text-white/75 hover:text-white transition-colors px-3 py-2">
+              Log in
+            </Link>
+            <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium">
+              Get a sample report
+            </Link>
+          </div>
+
+          {/* Mobile menu button */}
+          <button
+            className="md:hidden p-2 text-white"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-[#e5e5e5]">
-            <div className="container-custom py-4 flex flex-col gap-4">
-              <a href="#problem" className="text-sm text-[#666] hover:text-[#1a1a1a]">Problem</a>
-              <a href="#solution" className="text-sm text-[#666] hover:text-[#1a1a1a]">Solution</a>
-              <a href="#product" className="text-sm text-[#666] hover:text-[#1a1a1a]">Product</a>
-              <a href="#how-it-works" className="text-sm text-[#666] hover:text-[#1a1a1a]">How it works</a>
-              <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium text-center mt-2">
+          <div className="md:hidden bg-black/60 border-t border-white/10">
+            <div className="container-custom py-4 flex flex-col gap-3">
+              <Link href="/login" className="text-sm text-white/75 hover:text-white py-1">
+                Log in
+              </Link>
+              <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium text-center">
                 Get a sample report
               </Link>
             </div>
@@ -81,24 +78,15 @@ export default function Home() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-24 lg:pt-40 lg:pb-32 hero-nature-bg">
-        <div className="container-custom">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="fade-in-up">
-              <p className="text-[#4C7060] text-sm font-medium tracking-wide uppercase mb-6">
-                AI Sustainability Intelligence
-              </p>
-            </div>
-
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-medium tracking-tight leading-[1.1] mb-6 fade-in-up animation-delay-100 text-[#1a1a1a]">
+      <section className="relative hero-nature-bg overflow-hidden min-h-screen flex flex-col justify-center">
+        <div className="flex items-center gap-8 w-full">
+          {/* Left: Text */}
+          <div className="pl-20 lg:pl-28 shrink-0 w-[48%]">
+            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
               Measure the environmental cost of your enterprise AI
             </h1>
 
-            <p className="text-lg sm:text-xl text-[#555] max-w-2xl mx-auto mb-10 fade-in-up animation-delay-200">
-              Connect your AI infrastructure. Get monthly executive briefings on carbon footprint, water usage, license efficiency, and actionable recommendations.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 fade-in-up animation-delay-300">
+            <div className="flex flex-col sm:flex-row items-start gap-4 fade-in-up animation-delay-100">
               <Link
                 href="/login"
                 className="btn-primary text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto flex items-center justify-center gap-2"
@@ -108,19 +96,17 @@ export default function Home() {
               </Link>
               <a
                 href="#how-it-works"
-                className="btn-secondary text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto text-center"
+                className="btn-secondary-dark text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto text-center"
               >
                 See how it works
               </a>
             </div>
           </div>
 
-          {/* Product Visual */}
-          <div className="mt-16 lg:mt-24 fade-in-up animation-delay-400">
-            <div className="relative max-w-5xl mx-auto">
-              <div className="dashboard-shadow rounded-lg overflow-hidden border border-[#e5e5e5]">
-                <ExecutiveReport />
-              </div>
+          {/* Right: Dashboard mockup — flush to right edge */}
+          <div className="flex-1 fade-in-up animation-delay-200 flex justify-center items-center px-8">
+            <div className="dashboard-shadow rounded-tl-lg rounded-tr-lg overflow-hidden border-t border-l border-r border-white/10 w-full">
+              <ExecutiveReport />
             </div>
           </div>
         </div>
