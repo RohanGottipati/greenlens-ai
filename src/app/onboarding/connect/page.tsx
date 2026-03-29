@@ -60,6 +60,19 @@ function ConnectPageInner() {
 
         const savedProviders = (integrations ?? []).map((integration: { provider: string }) => integration.provider)
         setConnected(savedProviders)
+
+        // If the user signed in via Azure or Google, auto-initiate the matching admin OAuth flow
+        // (only on first visit — skip if they've already connected that provider)
+        const loginVia = searchParams.get('login_via') ?? (user.app_metadata?.provider as string | undefined) ?? ''
+        if (loginVia === 'azure' && !savedProviders.includes('microsoft')) {
+          window.location.href = '/api/integrations/microsoft/connect'
+          return
+        }
+        if (loginVia === 'google' && !savedProviders.includes('google')) {
+          window.location.href = '/api/integrations/google/connect'
+          return
+        }
+
         const successParam = resolvePersistedOAuthSuccess(savedProviders, searchParams.get('success'))
         if (successParam) {
           const providerLabel = INTEGRATIONS.find((integration) => integration.id === successParam)?.name ?? successParam
