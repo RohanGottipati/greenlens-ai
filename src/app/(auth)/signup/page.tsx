@@ -1,11 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState } from 'react'
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-function LoginPageInner() {
-  const searchParams = useSearchParams()
+function SignupPageInner() {
   const [loading, setLoading] = useState<string | null>(null)
   const [emailMode, setEmailMode] = useState(false)
   const [email, setEmail] = useState('')
@@ -13,36 +11,26 @@ function LoginPageInner() {
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
 
-  useEffect(() => {
-    const err = searchParams.get('error')
-    const detail = searchParams.get('detail')
-    if (err === 'auth_failed') {
-      setError(detail ? decodeURIComponent(detail) : 'Sign-in failed. Please try again.')
-    } else if (err === 'no_account') {
-      setError('No account found. Please sign up first.')
-    }
-  }, [searchParams])
-
   const handleOAuth = async (provider: 'azure' | 'google' | 'github') => {
     setLoading(provider)
     setError(null)
     await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?intent=login`,
+        redirectTo: `${window.location.origin}/auth/callback?intent=signup`,
         // Azure requires explicit email scope to return the user's email address
         scopes: provider === 'azure' ? 'email profile openid' : undefined,
       },
     })
   }
 
-  const handleEmailLogin = async () => {
+  const handleEmailSignup = async () => {
     if (!email.trim()) return
     setLoading('email')
     setError(null)
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?intent=login` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?intent=signup` },
     })
     setLoading(null)
     if (otpError) {
@@ -87,9 +75,9 @@ function LoginPageInner() {
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-medium text-white tracking-tight">GreenLens AI</h1>
+            <h1 className="text-2xl font-medium text-white tracking-tight">Create your account</h1>
             <p className="mt-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>
-              Measure and reduce your organisation&apos;s AI carbon footprint
+              Get started — measure your organisation&apos;s AI carbon footprint
             </p>
           </div>
 
@@ -97,15 +85,6 @@ function LoginPageInner() {
           {error && (
             <div className="mb-4 rounded-xl px-4 py-3" style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
               <p className="text-red-300 text-sm">{error}</p>
-              {searchParams.get('error') === 'no_account' && (
-                <a
-                  href="/signup"
-                  className="mt-1 block text-sm underline underline-offset-2"
-                  style={{ color: 'rgba(255,255,255,0.6)' }}
-                >
-                  Create an account →
-                </a>
-              )}
             </div>
           )}
 
@@ -122,7 +101,7 @@ function LoginPageInner() {
               </div>
               <p className="text-white font-medium mb-1">Check your inbox</p>
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                We sent a sign-in link to <span className="text-white">{email}</span>
+                We sent a sign-up link to <span className="text-white">{email}</span>
               </p>
               <button
                 onClick={() => { setEmailSent(false); setEmailMode(false); setEmail('') }}
@@ -140,7 +119,7 @@ function LoginPageInner() {
                 placeholder="you@company.com"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleEmailLogin()}
+                onKeyDown={e => e.key === 'Enter' && handleEmailSignup()}
                 autoFocus
                 className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/40 focus:outline-none"
                 style={{
@@ -149,11 +128,11 @@ function LoginPageInner() {
                 }}
               />
               <button
-                onClick={handleEmailLogin}
+                onClick={handleEmailSignup}
                 disabled={!email.trim() || loading === 'email'}
                 className="btn-primary w-full py-3 px-4 rounded-xl font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading === 'email' ? 'Sending…' : 'Send sign-in link'}
+                {loading === 'email' ? 'Sending…' : 'Send sign-up link'}
               </button>
               <button
                 onClick={() => { setEmailMode(false); setError(null) }}
@@ -222,16 +201,16 @@ function LoginPageInner() {
             </div>
           )}
 
-          {/* Disclaimer + signup link */}
+          {/* Disclaimer + login link */}
           {!emailSent && (
             <div className="mt-6 text-center space-y-2">
               <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                By signing in you agree to our terms of service.
+                By creating an account you agree to our terms of service.
               </p>
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                Don&apos;t have an account?{' '}
-                <a href="/signup" className="underline underline-offset-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                  Sign up
+                Already have an account?{' '}
+                <a href="/login" className="underline underline-offset-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                  Log in
                 </a>
               </p>
             </div>
@@ -242,10 +221,10 @@ function LoginPageInner() {
   )
 }
 
-export default function LoginPage() {
+export default function SignupPage() {
   return (
     <Suspense fallback={null}>
-      <LoginPageInner />
+      <SignupPageInner />
     </Suspense>
   )
 }

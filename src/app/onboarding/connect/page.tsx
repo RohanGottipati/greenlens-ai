@@ -27,7 +27,7 @@ const INTEGRATIONS = [
 
 export default function ConnectPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-950 flex items-center justify-center"><p className="text-gray-400">Loading…</p></div>}>
+    <Suspense fallback={<div className="hero-nature-bg min-h-screen" />}>
       <ConnectPageInner />
     </Suspense>
   )
@@ -36,6 +36,7 @@ export default function ConnectPage() {
 function ConnectPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const nextParam = searchParams.get('next') ?? '/onboarding/confirm'
   const [connected, setConnected] = useState<string[]>([])
   const [openaiKey, setOpenaiKey] = useState('')
   const [saving, setSaving] = useState(false)
@@ -60,6 +61,12 @@ function ConnectPageInner() {
 
         const savedProviders = (integrations ?? []).map((integration: { provider: string }) => integration.provider)
         setConnected(savedProviders)
+
+        // All 3 integrations already connected — skip the page and go to destination
+        if (savedProviders.length === INTEGRATIONS.length) {
+          router.replace(nextParam)
+          return
+        }
 
         // If the user signed in via Azure or Google, auto-initiate the matching admin OAuth flow
         // (only on first visit — skip if they've already connected that provider)
@@ -140,98 +147,150 @@ function ConnectPageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-8 flex items-center justify-center">
-      <div className="max-w-lg w-full">
-        <h1 className="text-2xl font-bold text-white mb-2">Connect your AI stack</h1>
-        <p className="text-gray-400 mb-2">Step 2 of 3</p>
-
-        <div className="bg-blue-950 border border-blue-800 rounded-xl p-4 mb-6">
-          <p className="text-blue-300 text-sm font-medium mb-1">What we collect and how</p>
-          <p className="text-blue-400 text-sm">
-            GreenLens measures the ecological impact of your organisation&apos;s AI deployment, not the
-            activity of individuals. We connect to admin dashboards and usage APIs that expose
-            aggregate organisational data: which models are deployed, total token volumes, and
-            license seat utilization. Individual prompts, messages, and user conversations are
-            never accessible through these API endpoints.
-          </p>
+    <div className="hero-nature-bg min-h-screen flex flex-col">
+      {/* Glass header */}
+      <div className="glass-header px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(76,112,96,0.9)' }}>
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <span className="text-white font-medium text-sm tracking-tight">GreenLens AI</span>
         </div>
+        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Step 2 of 3</span>
+      </div>
 
-        {error && (
-          <div className="bg-red-950 border border-red-800 rounded-xl p-3 mb-4">
-            <p className="text-red-300 text-sm">{error}</p>
+      {/* Centered content */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div
+          className="max-w-lg w-full rounded-2xl p-8 fade-in-up"
+          style={{
+            background: 'rgba(255,255,255,0.07)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}
+        >
+          <div className="mb-6">
+            <h1 className="text-2xl font-medium text-white tracking-tight">Connect your AI stack</h1>
+            <p className="mt-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              Connect all three integrations to continue.
+            </p>
           </div>
-        )}
 
-        {success && (
-          <div className="bg-green-950 border border-green-800 rounded-xl p-3 mb-4">
-            <p className="text-green-300 text-sm">{success}</p>
+          {/* Privacy info banner */}
+          <div
+            className="rounded-xl p-4 mb-6"
+            style={{ background: 'rgba(76,112,96,0.15)', border: '1px solid rgba(76,112,96,0.3)' }}
+          >
+            <p className="text-sm font-medium mb-1" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              What we collect and how
+            </p>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              GreenLens measures the ecological impact of your organisation&apos;s AI deployment, not the
+              activity of individuals. We connect to admin dashboards and usage APIs that expose
+              aggregate organisational data: which models are deployed, total token volumes, and
+              license seat utilization. Individual prompts, messages, and user conversations are
+              never accessible through these API endpoints.
+            </p>
           </div>
-        )}
 
-        <div className="space-y-3 mb-6">
-          {INTEGRATIONS.map(integration => (
-            <div key={integration.id} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <p className="text-white font-medium">{integration.name}</p>
-                    {integration.badge && (
-                      <span className="bg-green-900 text-green-300 text-xs px-2 py-0.5 rounded-full">
-                        {integration.badge}
+          {error && (
+            <div className="mb-4 rounded-xl px-4 py-3"
+              style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-4 rounded-xl px-4 py-3"
+              style={{ background: 'rgba(76,112,96,0.2)', border: '1px solid rgba(76,112,96,0.4)' }}>
+              <p className="text-sm" style={{ color: 'rgba(134,198,167,1)' }}>{success}</p>
+            </div>
+          )}
+
+          <div className="space-y-3 mb-6">
+            {INTEGRATIONS.map(integration => (
+              <div
+                key={integration.id}
+                className="rounded-xl p-4"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-white font-medium text-sm">{integration.name}</p>
+                      {integration.badge && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full"
+                          style={{ background: 'rgba(76,112,96,0.35)', color: 'rgba(134,198,167,1)' }}
+                        >
+                          {integration.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                      {integration.description}
+                    </p>
+                  </div>
+                  <div className="shrink-0">
+                    {connected.includes(integration.id) ? (
+                      <span className="flex items-center gap-1 text-sm font-medium"
+                        style={{ color: 'rgba(134,198,167,1)' }}>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                        Connected
                       </span>
+                    ) : integration.type === 'apikey' ? (
+                      <div className="flex flex-col gap-2 items-end">
+                        <input
+                          type="password"
+                          placeholder="sk-..."
+                          value={openaiKey}
+                          onChange={e => setOpenaiKey(e.target.value)}
+                          className="px-3 py-1.5 text-white text-sm w-44 rounded-lg focus:outline-none placeholder-white/30"
+                          style={{
+                            background: 'rgba(255,255,255,0.08)',
+                            border: '1px solid rgba(255,255,255,0.2)',
+                          }}
+                        />
+                        <button
+                          onClick={handleOpenAISave}
+                          disabled={!openaiKey || saving}
+                          className="text-sm disabled:opacity-50"
+                          style={{ color: 'rgba(134,198,167,1)' }}
+                        >
+                          {saving ? 'Verifying…' : 'Save key'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { window.location.href = integration.connectUrl }}
+                        className="btn-secondary-dark text-sm px-4 py-2 rounded-lg"
+                      >
+                        Connect
+                      </button>
                     )}
                   </div>
-                  <p className="text-gray-400 text-sm">{integration.description}</p>
-                </div>
-                <div className="shrink-0">
-                  {connected.includes(integration.id) ? (
-                    <span className="flex items-center gap-1 text-green-400 text-sm font-medium">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      Connected
-                    </span>
-                  ) : integration.type === 'apikey' ? (
-                    <div className="flex flex-col gap-2 items-end">
-                      <input
-                        type="password"
-                        placeholder="sk-..."
-                        value={openaiKey}
-                        onChange={e => setOpenaiKey(e.target.value)}
-                        className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm w-44 focus:outline-none focus:border-gray-500"
-                      />
-                      <button
-                        onClick={handleOpenAISave}
-                        disabled={!openaiKey || saving}
-                        className="text-green-400 text-sm disabled:opacity-50"
-                      >
-                        {saving ? 'Verifying…' : 'Save key'}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { window.location.href = integration.connectUrl }}
-                      className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-4 py-2 rounded-lg transition-colors"
-                    >
-                      Connect
-                    </button>
-                  )}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <button
-          onClick={() => router.push('/onboarding/confirm')}
-          disabled={connected.length === 0 || loading}
-          className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
-        >
-          {loading ? 'Loading…' : `Continue${connected.length > 0 ? ` (${connected.length} connected)` : ''}`}
-        </button>
-        <p className="text-gray-600 text-xs text-center mt-3">
-          Connect at least one integration to generate your first report.
-        </p>
+          <button
+            onClick={() => router.push(nextParam)}
+            disabled={connected.length < INTEGRATIONS.length || loading}
+            className="btn-primary w-full py-3 rounded-xl font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Loading…' : `Continue${connected.length > 0 ? ` (${connected.length} / ${INTEGRATIONS.length} connected)` : ''}`}
+          </button>
+        </div>
       </div>
     </div>
   )

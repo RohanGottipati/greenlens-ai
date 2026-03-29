@@ -26,6 +26,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('supabase_user_id', user.id).single()
   if (!company) redirect('/onboarding')
 
+  const { data: integrations } = await supabase.from('integrations')
+    .select('provider').eq('company_id', company.id).eq('is_active', true)
+  const connectedProviders = (integrations ?? []).map((i: { provider: string }) => i.provider)
+  if (!['microsoft', 'google', 'openai'].every(p => connectedProviders.includes(p))) {
+    redirect('/onboarding/connect')
+  }
+
   const { data: latestReport } = await supabase.from('reports')
     .select('reporting_period, report_mode, section_availability, executive_summary')
     .eq('company_id', company.id)
