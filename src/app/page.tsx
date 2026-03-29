@@ -198,9 +198,9 @@ export default function Home() {
         )}
       </nav>
 
-      {/* Hero Section — vertically centered in viewport below fixed nav */}
-      <section className="relative hero-nature-bg overflow-hidden min-h-[100dvh] flex flex-col">
-        <div className="flex-1 flex flex-col lg:flex-row lg:items-center justify-center gap-8 lg:gap-10 xl:gap-14 w-full max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 pt-24 pb-14 lg:py-8">
+      {/* Hero Section */}
+      <section className="relative hero-nature-bg overflow-hidden min-h-screen flex flex-col justify-center">
+        <div className="flex items-center gap-8 w-full">
           {/* Left: Text */}
           <div className="pl-20 lg:pl-28 shrink-0 w-[48%]">
             <h1 className="text-5xl sm:text-6xl lg:text-[5.75rem] font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
