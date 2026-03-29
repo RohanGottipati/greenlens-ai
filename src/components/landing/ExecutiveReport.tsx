@@ -3,7 +3,7 @@ import { BarChart3, Droplets, Zap, TrendingDown, TrendingUp, AlertTriangle, Chec
 interface Trend {
   value: string;
   direction: 'up' | 'down' | 'warning';
-  positive?: boolean;
+  tone?: 'red' | 'green' | 'amber';
 }
 
 interface MetricCardProps {
@@ -14,24 +14,28 @@ interface MetricCardProps {
   trend?: Trend;
 }
 
+const trendClass = (trend: Trend) => {
+  if (trend.tone === 'amber' || trend.direction === 'warning') return 'text-amber-600';
+  if (trend.tone === 'green') return 'text-[#2d6a4f]';
+  if (trend.tone === 'red') return 'text-red-500';
+  return 'text-red-500';
+};
+
 const MetricCard = ({ icon, label, value, unit, trend }: MetricCardProps) => (
-  <div className="bg-[#fafafa] rounded-lg p-4 border border-[#e5e5e5]">
-    <div className="flex items-center gap-2 text-[#666] mb-3">
-      {icon}
-      <span className="text-xs uppercase tracking-wide">{label}</span>
+  <div className="bg-[#f7f7f7] rounded-md p-2.5 border border-[#e8e8e8]">
+    <div className="flex items-center gap-1.5 text-[#666] mb-1.5">
+      <span className="text-[#4C7060] [&>svg]:w-3 [&>svg]:h-3">{icon}</span>
+      <span className="text-[10px] uppercase tracking-wide leading-tight">{label}</span>
     </div>
-    <div className="flex items-baseline gap-2 mb-1">
-      <span className="text-2xl lg:text-3xl font-medium text-[#4C7060]">{value}</span>
-      <span className="text-sm text-[#666]">{unit}</span>
+    <div className="flex items-baseline gap-1 mb-0.5">
+      <span className="text-lg font-semibold text-[#1a1a1a] tabular-nums">{value}</span>
+      <span className="text-[11px] text-[#666]">{unit}</span>
     </div>
     {trend && (
-      <div className={`flex items-center gap-1 text-xs ${
-        trend.direction === 'warning' ? 'text-amber-600' :
-        trend.positive ? 'text-[#4C7060]' : 'text-red-500'
-      }`}>
-        {trend.direction === 'down' && <TrendingDown className="w-3 h-3" />}
-        {trend.direction === 'up' && <TrendingUp className="w-3 h-3" />}
-        {trend.direction === 'warning' && <AlertTriangle className="w-3 h-3" />}
+      <div className={`flex items-center gap-0.5 text-[10px] font-medium leading-tight ${trendClass(trend)}`}>
+        {trend.direction === 'down' && <TrendingDown className="w-2.5 h-2.5 shrink-0" />}
+        {trend.direction === 'up' && <TrendingUp className="w-2.5 h-2.5 shrink-0" />}
+        {trend.direction === 'warning' && <AlertTriangle className="w-2.5 h-2.5 shrink-0" />}
         <span>{trend.value}</span>
       </div>
     )}
@@ -40,113 +44,103 @@ const MetricCard = ({ icon, label, value, unit, trend }: MetricCardProps) => (
 
 const ExecutiveReport = () => {
   return (
-    <div className="bg-white p-6 lg:p-8">
+    <div className="bg-white p-3 sm:p-4 text-[13px] leading-snug">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 pb-6 border-b border-[#e5e5e5]">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 rounded-md bg-[#4C7060] flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-white" strokeWidth={1.5} />
+      <div className="flex items-start justify-between gap-3 mb-3 pb-3 border-b border-[#e5e5e5]">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-6 h-6 rounded bg-[#4C7060] flex items-center justify-center shrink-0">
+              <BarChart3 className="w-3.5 h-3.5 text-white" strokeWidth={1.5} />
             </div>
-            <span className="font-medium text-lg text-[#1a1a1a]">GreenLens AI</span>
+            <span className="font-medium text-sm text-[#1a1a1a]">GreenLens AI</span>
           </div>
-          <h2 className="text-xl lg:text-2xl font-medium text-[#1a1a1a]">Monthly AI Impact Briefing</h2>
-          <p className="text-[#666] text-sm mt-1">November 2025 | Acme Corporation</p>
+          <h2 className="text-sm font-semibold text-[#1a1a1a] leading-tight">Monthly AI impact briefing</h2>
+          <p className="text-[11px] text-[#888] mt-0.5">Nov 2023 · Acme Corporation</p>
         </div>
-        <div className="hidden sm:block text-right">
-          <p className="text-[#888] text-xs uppercase tracking-wide mb-1">Report Period</p>
-          <p className="text-sm text-[#333]">Nov 1 - Nov 30, 2025</p>
+        <div className="hidden sm:block text-right shrink-0">
+          <p className="text-[10px] text-[#888] uppercase tracking-wide">Reporting period</p>
+          <p className="text-[11px] text-[#333] font-medium whitespace-nowrap">Nov 1–30, 2023</p>
         </div>
       </div>
 
-      {/* Key Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
         <MetricCard
-          icon={<BarChart3 className="w-4 h-4" strokeWidth={1.5} />}
-          label="Carbon Footprint"
+          icon={<BarChart3 strokeWidth={1.5} />}
+          label="Carbon"
           value="847"
           unit="kg CO₂e"
-          trend={{ value: '12% vs last month', direction: 'down', positive: true }}
+          trend={{ value: '↑ 12% vs prior month', direction: 'up', tone: 'red' }}
         />
         <MetricCard
-          icon={<Droplets className="w-4 h-4" strokeWidth={1.5} />}
-          label="Water Usage"
+          icon={<Droplets strokeWidth={1.5} />}
+          label="Water"
           value="12.4K"
-          unit="liters"
-          trend={{ value: '8% vs last month', direction: 'up', positive: false }}
+          unit="L"
+          trend={{ value: '↑ 8% vs prior month', direction: 'up', tone: 'red' }}
         />
         <MetricCard
-          icon={<Zap className="w-4 h-4" strokeWidth={1.5} />}
-          label="License Utilization"
+          icon={<Zap strokeWidth={1.5} />}
+          label="Licenses"
           value="67%"
-          unit="active"
-          trend={{ value: '5% vs last month', direction: 'up', positive: true }}
+          unit="in use"
+          trend={{ value: '↑ 6% vs prior month', direction: 'up', tone: 'green' }}
         />
         <MetricCard
-          icon={<AlertTriangle className="w-4 h-4" strokeWidth={1.5} />}
-          label="Cost at Risk"
+          icon={<AlertTriangle strokeWidth={1.5} />}
+          label="Cost exposure"
           value="$48K"
-          unit="annual"
-          trend={{ value: 'renewal in 47 days', direction: 'warning' }}
+          unit="/ yr"
+          trend={{ value: 'Renewal in 4 days', direction: 'warning' }}
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid lg:grid-cols-3 gap-6 mb-8">
-        {/* Carbon Trend Chart */}
-        <div className="lg:col-span-2 bg-[#fafafa] rounded-lg p-5 border border-[#e5e5e5]">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-[#1a1a1a]">Carbon Emissions Trend</p>
-            <div className="flex items-center gap-4 text-xs text-[#666]">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#4C7060]" />
+      {/* Charts — single row, compact */}
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
+        <div className="sm:col-span-3 bg-[#f7f7f7] rounded-md p-2.5 border border-[#e8e8e8]">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-[11px] font-medium text-[#1a1a1a]">Emissions trend</p>
+            <div className="flex items-center gap-2 text-[9px] text-[#666]">
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4C7060]" />
                 This month
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#d4d4d4]" />
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#ccc]" />
                 Last month
               </span>
             </div>
           </div>
-          <div className="h-32 flex items-end gap-2">
+          <div className="h-[4.5rem] flex items-end gap-1.5">
             {[
+              { current: 72, previous: 78 },
               { current: 65, previous: 70 },
-              { current: 72, previous: 75 },
-              { current: 58, previous: 68 },
               { current: 80, previous: 85 },
-              { current: 75, previous: 90 },
-              { current: 68, previous: 78 },
-              { current: 82, previous: 88 },
-              { current: 70, previous: 82 },
-              { current: 65, previous: 75 },
-              { current: 78, previous: 85 },
-              { current: 72, previous: 80 },
-              { current: 68, previous: 76 }
+              { current: 58, previous: 68 }
             ].map((data, i) => (
-              <div key={i} className="flex-1 flex gap-0.5">
+              <div key={i} className="flex-1 flex gap-0.5 min-w-0">
                 <div
-                  className="flex-1 bg-[#d4d4d4] rounded-t-sm transition-all hover:bg-[#b3b3b3]"
+                  className="flex-1 bg-[#ccc] rounded-t-sm"
                   style={{ height: `${data.previous}%` }}
                 />
                 <div
-                  className="flex-1 bg-[#4C7060] rounded-t-sm transition-all hover:bg-[#3d5a4d]"
+                  className="flex-1 bg-[#4C7060] rounded-t-sm"
                   style={{ height: `${data.current}%` }}
                 />
               </div>
             ))}
           </div>
-          <div className="flex justify-between mt-2 text-xs text-[#888]">
-            <span>Week 1</span>
-            <span>Week 2</span>
-            <span>Week 3</span>
-            <span>Week 4</span>
+          <div className="flex justify-between mt-1.5 text-[9px] text-[#888]">
+            <span>W1</span>
+            <span>W2</span>
+            <span>W3</span>
+            <span>W4</span>
           </div>
         </div>
 
-        {/* Provider Breakdown */}
-        <div className="bg-[#fafafa] rounded-lg p-5 border border-[#e5e5e5]">
-          <p className="text-sm font-medium mb-4 text-[#1a1a1a]">By Provider</p>
-          <div className="space-y-4">
+        <div className="sm:col-span-2 bg-[#f7f7f7] rounded-md p-2.5 border border-[#e8e8e8]">
+          <p className="text-[11px] font-medium mb-2 text-[#1a1a1a]">By provider (CO₂e)</p>
+          <div className="space-y-1.5">
             {[
               { name: 'Azure OpenAI', percentage: 45, value: '381 kg' },
               { name: 'OpenAI API', percentage: 30, value: '254 kg' },
@@ -154,13 +148,13 @@ const ExecutiveReport = () => {
               { name: 'Other', percentage: 7, value: '60 kg' }
             ].map((provider, i) => (
               <div key={i}>
-                <div className="flex items-center justify-between text-sm mb-1.5">
-                  <span className="text-[#333]">{provider.name}</span>
-                  <span className="text-[#666]">{provider.value}</span>
+                <div className="flex items-center justify-between text-[10px] mb-0.5 gap-1">
+                  <span className="text-[#333] truncate">{provider.name}</span>
+                  <span className="text-[#666] tabular-nums shrink-0">{provider.value}</span>
                 </div>
-                <div className="w-full h-1.5 bg-[#e5e5e5] rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-[#e5e5e5] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[#4C7060] rounded-full transition-all"
+                    className="h-full bg-[#4C7060] rounded-full"
                     style={{ width: `${provider.percentage}%` }}
                   />
                 </div>
@@ -170,46 +164,46 @@ const ExecutiveReport = () => {
         </div>
       </div>
 
-      {/* Recommendations */}
-      <div className="bg-[#fafafa] rounded-lg p-5 border border-[#e5e5e5]">
-        <div className="flex items-center gap-2 mb-4">
-          <CheckCircle2 className="w-4 h-4 text-[#4C7060]" strokeWidth={1.5} />
-          <p className="text-sm font-medium text-[#1a1a1a]">Recommended Actions</p>
+      {/* Actions — one compact row */}
+      <div className="bg-[#f7f7f7] rounded-md p-2.5 border border-[#e8e8e8]">
+        <div className="flex items-center gap-1.5 mb-2">
+          <CheckCircle2 className="w-3 h-3 text-[#4C7060]" strokeWidth={1.5} />
+          <p className="text-[11px] font-medium text-[#1a1a1a]">Suggested next steps</p>
         </div>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
           {[
             {
               priority: 'High',
               action: 'Consolidate Azure regions',
-              impact: 'Reduce carbon footprint by 18%',
-              savings: '$12K/year'
+              impact: '~18% lower emissions',
+              savings: '~$1.2K/yr'
             },
             {
               priority: 'Medium',
-              action: 'Right-size Copilot licenses',
-              impact: 'Recover 33% unused capacity',
-              savings: '$36K/year'
+              action: 'Right-size Copilot seats',
+              impact: '~22% unused capacity',
+              savings: '~$3K/yr'
             },
             {
               priority: 'Low',
-              action: 'Shift batch jobs to off-peak',
-              impact: 'Lower water usage by 15%',
-              savings: 'Environmental'
+              action: 'Move batch jobs off-peak',
+              impact: '~15% less water use',
+              savings: 'Sustainability'
             }
           ].map((rec, i) => (
-            <div key={i} className="bg-white rounded-lg p-4 border border-[#e5e5e5]">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`text-xs px-2 py-0.5 rounded ${
-                  rec.priority === 'High' ? 'bg-[#f0f5f3] text-[#4C7060]' :
-                  rec.priority === 'Medium' ? 'bg-amber-50 text-amber-600' :
-                  'bg-[#f5f5f5] text-[#666]'
-                }`}>
-                  {rec.priority}
-                </span>
-              </div>
-              <p className="text-sm font-medium mb-1 text-[#1a1a1a]">{rec.action}</p>
-              <p className="text-xs text-[#666] mb-2">{rec.impact}</p>
-              <p className="text-xs text-[#4C7060]">{rec.savings}</p>
+            <div key={i} className="bg-white rounded border border-[#e8e8e8] p-2">
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium inline-block mb-1 ${
+                rec.priority === 'High' ? 'bg-[#e8f5e9] text-[#2d6a4f]' :
+                rec.priority === 'Medium' ? 'bg-amber-50 text-amber-800' :
+                'bg-sky-50 text-sky-800'
+              }`}>
+                {rec.priority}
+              </span>
+              <p className="text-[10px] font-medium text-[#1a1a1a] leading-tight mb-0.5">{rec.action}</p>
+              <p className="text-[9px] text-[#666] leading-tight">{rec.impact}</p>
+              <p className={`text-[9px] font-medium mt-0.5 ${
+                rec.savings === 'Sustainability' ? 'text-sky-800' : 'text-[#4C7060]'
+              }`}>{rec.savings}</p>
             </div>
           ))}
         </div>

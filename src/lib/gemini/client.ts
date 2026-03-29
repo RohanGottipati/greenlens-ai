@@ -13,7 +13,10 @@ export async function generateWithGemini(prompt: string): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
 
   try {
-    const result = await model.generateContent(prompt)
+    const result = await model.generateContent(
+      { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
+      { signal: controller.signal }
+    )
     const text = result.response.text()
     if (!text) throw new Error('Empty response from Gemini')
     return text

@@ -1,7 +1,9 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAnalysisJob } from '@/lib/analysis/use-analysis-job'
+import type { AnalysisJobState } from '@/lib/analysis/state'
+import { buildReportNavigationTarget } from '@/lib/reports/report-navigation'
 
 const AGENT_LABELS: Record<string, string> = {
   usage_analyst: 'Collecting usage data…',
@@ -12,10 +14,27 @@ const AGENT_LABELS: Record<string, string> = {
   synthesis: 'Finalizing report…',
 }
 
-export default function RerunAnalysisButton() {
+interface Props {
+  initialJobState?: AnalysisJobState | null
+}
+
+export default function RerunAnalysisButton({ initialJobState = null }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { loading, jobState, error, triggerAnalysis, statusMessage } = useAnalysisJob({
-    onComplete: () => router.refresh(),
+    initialJobState,
+    onComplete: (nextState) => {
+      if (!nextState.reportId) {
+        router.refresh()
+        return
+      }
+
+      router.replace(
+        buildReportNavigationTarget(pathname, searchParams.toString(), nextState.reportId)
+      )
+      router.refresh()
+    },
   })
 
   const label = jobState?.current_agent
@@ -24,12 +43,6 @@ export default function RerunAnalysisButton() {
 
   return (
     <div className="flex items-center gap-3">
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <div className="w-3.5 h-3.5 border-2 border-green-400 border-t-transparent rounded-full animate-spin shrink-0" />
-          <span>{label}</span>
-        </div>
-      )}
       {error && !loading && (
         <span className="text-red-400 text-xs">{error}</span>
       )}
@@ -41,7 +54,7 @@ export default function RerunAnalysisButton() {
         {loading ? (
           <>
             <span className="w-3.5 h-3.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-            Running…
+            {label}
           </>
         ) : (
           <>

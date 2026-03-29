@@ -1,7 +1,8 @@
 'use client'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAnalysisJob } from '@/lib/analysis/use-analysis-job'
 import type { AnalysisJobState } from '@/lib/analysis/state'
+import { buildReportNavigationTarget } from '@/lib/reports/report-navigation'
 
 interface AnalysisTriggerScreenProps {
   companyId: string
@@ -13,9 +14,21 @@ export default function AnalysisTriggerScreen({
   initialJobState = null,
 }: AnalysisTriggerScreenProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { error, jobState, loading, statusMessage, triggerAnalysis } = useAnalysisJob({
     initialJobState,
-    onComplete: () => router.refresh(),
+    onComplete: (nextState) => {
+      if (!nextState.reportId) {
+        router.refresh()
+        return
+      }
+
+      router.replace(
+        buildReportNavigationTarget(pathname, searchParams.toString(), nextState.reportId)
+      )
+      router.refresh()
+    },
   })
 
   return (

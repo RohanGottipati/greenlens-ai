@@ -5,31 +5,12 @@ import {
   isActiveAnalysisStatus,
   type AnalysisJobState,
 } from '@/lib/analysis/state'
+import { getAnalysisStatusMessage } from '@/lib/analysis/polling-policy'
+import { createAnalysisPollController } from '@/lib/analysis/polling-controller'
 
 interface UseAnalysisJobOptions {
   initialJobState?: AnalysisJobState | null
   onComplete?: (jobState: AnalysisJobState) => void
-}
-
-const AGENT_LABELS: Record<string, string> = {
-  usage_analyst: 'Collecting usage data',
-  stat_analysis: 'Running statistical analysis',
-  carbon_water_accountant: 'Calculating carbon and water impact',
-  license_intelligence: 'Reviewing license utilization',
-  strategic_translator: 'Generating strategic recommendations',
-  synthesis: 'Finalizing your report',
-}
-
-function getStatusMessage(jobState: AnalysisJobState | null) {
-  if (!jobState) return null
-  if (jobState.status === 'pending') return 'Queued and about to begin.'
-  if (jobState.status === 'finalizing') return 'Finalizing your report.'
-  if (jobState.current_agent) {
-    return AGENT_LABELS[jobState.current_agent] ?? 'Analysis in progress.'
-  }
-  if (jobState.status === 'running') return 'Analysis in progress.'
-  if (jobState.status === 'failed') return jobState.error_message ?? 'Analysis failed.'
-  return null
 }
 
 export function useAnalysisJob({
@@ -38,17 +19,15 @@ export function useAnalysisJob({
 }: UseAnalysisJobOptions) {
   const [jobState, setJobState] = useState<AnalysisJobState | null>(initialJobState)
   const [error, setError] = useState<string | null>(initialJobState?.error_message ?? null)
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onCompleteRef = useRef(onComplete)
+  const pollControllerRef = useRef<ReturnType<typeof createAnalysisPollController> | null>(null)
+  const resumedInitialJobIdRef = useRef<string | null>(null)
 
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
-    }
-  }, [])
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
 
   const handleTerminalState = useCallback((nextState: AnalysisJobState) => {
-    setJobState(nextState)
     if (nextState.status === 'failed') {
       setError(nextState.error_message ?? 'Analysis failed')
       return
@@ -56,41 +35,42 @@ export function useAnalysisJob({
 
     setError(null)
     if (nextState.status === 'complete' && nextState.reportId) {
-      onComplete?.(nextState)
+      onCompleteRef.current?.(nextState)
     }
-  }, [onComplete])
+  }, [])
 
-  const pollStatus = useCallback(async (jobId: string) => {
-    try {
-      const response = await fetch(`/api/pipeline/status?jobId=${jobId}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error('Failed to fetch analysis status')
+  if (!pollControllerRef.current) {
+    pollControllerRef.current = createAnalysisPollController({
+      callbacks: {
+        setJobState,
+        setError,
+        handleTerminalState,
+      },
+      fetchStatus: async (jobId, signal) => {
+        const response = await fetch(`/api/pipeline/status?jobId=${jobId}`, {
+          cache: 'no-store',
+          signal,
+        })
 
-      const data = await response.json() as AnalysisJobState
-      setJobState(data)
+        if (!response.ok) {
+          throw new Error('Failed to fetch analysis status')
+        }
 
-      if (data.status === 'failed' || (data.status === 'complete' && data.reportId)) {
-        stopPolling()
-        handleTerminalState(data)
-        return
-      }
+        return await response.json() as AnalysisJobState
+      },
+    })
+  }
 
-      setError(null)
-    } catch (pollError) {
-      stopPolling()
-      setError(pollError instanceof Error ? pollError.message : 'Failed to fetch analysis status')
-    }
-  }, [handleTerminalState, stopPolling])
-
-  const startPolling = useCallback((jobId: string) => {
-    stopPolling()
-    void pollStatus(jobId)
-    pollIntervalRef.current = setInterval(() => {
-      void pollStatus(jobId)
-    }, 3000)
-  }, [pollStatus, stopPolling])
+  useEffect(() => {
+    pollControllerRef.current?.updateCallbacks({
+      setJobState,
+      setError,
+      handleTerminalState,
+    })
+  }, [handleTerminalState])
 
   const triggerAnalysis = useCallback(async () => {
-    stopPolling()
+    pollControllerRef.current?.stopPolling()
     setError(null)
 
     try {
@@ -106,12 +86,13 @@ export function useAnalysisJob({
       }
 
       if (isActiveAnalysisStatus(data.status)) {
-        startPolling(data.jobId)
+        resumedInitialJobIdRef.current = data.jobId
+        pollControllerRef.current?.startPolling(data.jobId)
       }
     } catch (triggerError) {
       setError(triggerError instanceof Error ? triggerError.message : 'Failed to start analysis')
     }
-  }, [handleTerminalState, startPolling, stopPolling])
+  }, [handleTerminalState])
 
   useEffect(() => {
     setJobState(initialJobState)
@@ -119,18 +100,28 @@ export function useAnalysisJob({
   }, [initialJobState])
 
   useEffect(() => {
-    if (initialJobState && isActiveAnalysisStatus(initialJobState.status)) {
-      startPolling(initialJobState.jobId)
+    if (!initialJobState || !isActiveAnalysisStatus(initialJobState.status)) {
+      resumedInitialJobIdRef.current = null
+      return
     }
 
-    return () => {
-      stopPolling()
+    if (resumedInitialJobIdRef.current === initialJobState.jobId) {
+      return
     }
-  }, [initialJobState, startPolling, stopPolling])
+
+    resumedInitialJobIdRef.current = initialJobState.jobId
+    pollControllerRef.current?.startPolling(initialJobState.jobId)
+  }, [initialJobState])
+
+  useEffect(() => {
+    return () => {
+      pollControllerRef.current?.stopPolling()
+    }
+  }, [])
 
   const status = jobState?.status ?? null
   const loading = status ? isActiveAnalysisStatus(status) : false
-  const statusMessage = getStatusMessage(jobState)
+  const statusMessage = getAnalysisStatusMessage(jobState)
 
   return {
     error,

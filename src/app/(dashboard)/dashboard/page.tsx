@@ -4,28 +4,50 @@ import DecisionCard from '@/components/dashboard/DecisionCard'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import {
+  getReportFreshness,
+  getSectionAvailability,
+} from '@/lib/reports/report-availability'
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams?: Promise<{ reportId?: string }>
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const requestedReportId = (await searchParams)?.reportId ?? null
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).single()
+  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
-  const anomalyDetected = report.anomaly_detected ?? report.stat_analysis?.anomaly_detection?.anomaly_detected ?? false
-  const carbonPercentile = report.carbon_percentile ?? report.stat_analysis?.carbon_percentile?.percentile ?? null
-  const trendDirection = report.trend_direction ?? report.stat_analysis?.usage_trend?.trend_direction ?? 'stable'
+  const sectionAvailability = getSectionAvailability(report)
+  const freshness = getReportFreshness(report)
+  const carbonWaterAvailable = sectionAvailability.carbon_water.status === 'available'
+  const modelEfficiencyAvailable = sectionAvailability.model_efficiency.status === 'available'
+  const benchmarkAvailable = sectionAvailability.benchmark.status === 'available'
+  const licenseAvailable = sectionAvailability.license.status === 'available'
+  const anomalyDetected = benchmarkAvailable
+    ? report.anomaly_detected ?? report.stat_analysis?.anomaly_detection?.anomaly_detected ?? false
+    : false
+  const carbonPercentile = benchmarkAvailable
+    ? report.carbon_percentile ?? report.stat_analysis?.carbon_percentile?.percentile ?? null
+    : null
+  const trendDirection = benchmarkAvailable
+    ? report.trend_direction ?? report.stat_analysis?.usage_trend?.trend_direction ?? null
+    : null
   const mitigationStrategies = report.mitigation_strategies?.strategies
     ?? report.executive_summary?.mitigation_strategies
     ?? []
+  const latestCompleteDay = freshness?.latest_complete_day ?? freshness?.coverage_end ?? null
 
-  const carbonDelta = report.prev_carbon_kg
+  const carbonDelta = carbonWaterAvailable && report.prev_carbon_kg && report.carbon_kg != null
     ? Math.round(((report.carbon_kg - report.prev_carbon_kg) / report.prev_carbon_kg) * 100) : null
-  const scoreDelta = report.prev_model_efficiency_score
+  const scoreDelta = modelEfficiencyAvailable && report.prev_model_efficiency_score && report.model_efficiency_score != null
     ? report.model_efficiency_score - report.prev_model_efficiency_score : null
 
   return (
@@ -33,9 +55,12 @@ export default async function DashboardPage() {
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">AI Intelligence Brief</h1>
-          <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
+          <p className="text-gray-400 mt-1">
+            {company!.name} · {report.reporting_period}
+            {latestCompleteDay ? ` · Data through ${latestCompleteDay}` : ''}
+          </p>
         </div>
-        <RerunAnalysisButton />
+        <RerunAnalysisButton initialJobState={analysisJob} />
       </div>
 
       {/* Anomaly alert */}
@@ -50,17 +75,38 @@ export default async function DashboardPage() {
 
       {/* Top line metrics */}
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Monthly AI Carbon" value={`${Math.round(report.carbon_kg ?? 0)} kg`}
-          unit="CO2e" delta={carbonDelta} />
+        <MetricCard
+          label="Monthly AI Carbon"
+          value={carbonWaterAvailable && report.carbon_kg != null ? `${Math.round(report.carbon_kg)} kg` : '—'}
+          unit={carbonWaterAvailable ? 'CO2e' : undefined}
+          delta={carbonDelta}
+        />
         <MetricCard label="Monthly AI Water"
-          value={`${Math.round((report.water_liters ?? 0) / 1000)}k L`}
-          unit={`~${Math.round((report.executive_summary?.water_bottles ?? 0) / 1000)}k bottles`} />
-        <MetricCard label="Model Efficiency" value={`${report.model_efficiency_score ?? '—'}/100`}
+          value={carbonWaterAvailable && report.water_liters != null
+            ? `${Math.round(report.water_liters / 1000)}k L`
+            : '—'}
+          unit={carbonWaterAvailable && report.executive_summary?.water_bottles != null
+            ? `~${Math.round(report.executive_summary.water_bottles / 1000)}k bottles`
+            : undefined}
+        />
+        <MetricCard
+          label="Model Efficiency"
+          value={modelEfficiencyAvailable && report.model_efficiency_score != null
+            ? `${report.model_efficiency_score}/100`
+            : '—'}
           delta={scoreDelta}
-          status={(report.model_efficiency_score ?? 0) > 60 ? 'good' : 'warning'} />
+          status={modelEfficiencyAvailable && report.model_efficiency_score != null
+            ? (report.model_efficiency_score > 60 ? 'good' : 'warning')
+            : undefined}
+        />
         <MetricCard label="License Utilization"
-          value={`${Math.round(report.license_utilization_rate ?? 0)}%`}
-          status={(report.license_utilization_rate ?? 0) > 75 ? 'good' : 'warning'} />
+          value={licenseAvailable && report.license_utilization_rate != null
+            ? `${Math.round(report.license_utilization_rate)}%`
+            : '—'}
+          status={licenseAvailable && report.license_utilization_rate != null
+            ? (report.license_utilization_rate > 75 ? 'good' : 'warning')
+            : undefined}
+        />
       </div>
 
       {/* Sector percentile + trend */}
@@ -70,13 +116,19 @@ export default async function DashboardPage() {
           <p className="text-white font-semibold">
             {carbonPercentile != null ? `${carbonPercentile.toFixed(0)}th percentile for carbon intensity` : 'Sector percentile unavailable'}
           </p>
-          <p className="text-gray-400 text-sm">{report.benchmark_data?.carbon_percentile?.relative_position}</p>
+          <p className="text-gray-400 text-sm">
+            {benchmarkAvailable
+              ? report.benchmark_data?.carbon_percentile?.relative_position ?? 'Benchmark context unavailable.'
+              : sectionAvailability.benchmark.message}
+          </p>
         </div>
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
           <p className="text-gray-400 text-sm mb-1">Usage Trend</p>
-          <p className="text-white font-semibold capitalize">{trendDirection}</p>
+          <p className="text-white font-semibold capitalize">{trendDirection ?? 'Unavailable'}</p>
           <p className="text-gray-400 text-sm">
-            Projected 30-day: {report.stat_analysis?.usage_trend?.projected_30d_requests?.toLocaleString()} requests
+            {benchmarkAvailable
+              ? `Projected 30-day: ${report.stat_analysis?.usage_trend?.projected_30d_requests?.toLocaleString() ?? '—'} requests`
+              : sectionAvailability.benchmark.message}
           </p>
         </div>
       </div>
@@ -103,7 +155,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Mitigation strategies if score is low */}
-      {report.model_efficiency_score < 60 && (
+      {modelEfficiencyAvailable && report.model_efficiency_score != null && report.model_efficiency_score < 60 && (
         <>
           <h2 className="text-xl font-semibold text-white mb-4">
             Improving Your Score ({report.model_efficiency_score}/100)

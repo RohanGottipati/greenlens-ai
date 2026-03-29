@@ -22,7 +22,14 @@ export default function ConfirmPageClient({
   const router = useRouter()
   const { error, jobState, loading, statusMessage, triggerAnalysis } = useAnalysisJob({
     initialJobState,
-    onComplete: () => router.push('/dashboard'),
+    onComplete: (nextState) => {
+      if (!nextState.reportId) {
+        router.push('/dashboard')
+        return
+      }
+
+      router.push(`/dashboard?reportId=${encodeURIComponent(nextState.reportId)}`)
+    },
   })
 
   return (

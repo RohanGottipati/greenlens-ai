@@ -1,6 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import axios from 'axios'
+import {
+  buildIntegrationCallbackRedirect,
+  persistOAuthIntegration,
+} from '@/lib/integrations/oauth-helpers'
+
+function getOAuthErrorDetail(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const responseData = error.response?.data as {
+      error_description?: string
+      error?: string
+    } | undefined
+
+    return responseData?.error_description
+      ?? responseData?.error
+      ?? error.message
+      ?? 'unknown'
+  }
+
+  return error instanceof Error ? error.message : 'unknown'
+}
 
 export async function GET(request: Request) {
   const origin = new URL(request.url).origin
@@ -8,7 +28,9 @@ export async function GET(request: Request) {
   const code = searchParams.get('code')
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/onboarding/connect?error=microsoft_failed`)
+    return NextResponse.redirect(
+      buildIntegrationCallbackRedirect(origin, 'microsoft', 'error')
+    )
   }
 
   try {
@@ -42,18 +64,28 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/onboarding?error=company_missing`)
     }
 
-    await supabase.from('integrations').upsert({
+    const persistenceError = await persistOAuthIntegration(supabase, {
       company_id: company.id, provider: 'microsoft',
       access_token, refresh_token,
       token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
       is_active: true
-    }, { onConflict: 'company_id,provider' })
+    })
 
-    return NextResponse.redirect(`${origin}/onboarding/connect?success=microsoft`)
-  } catch (err: any) {
-    const detail = err.response?.data?.error_description ?? err.response?.data?.error ?? err.message ?? 'unknown'
+    if (persistenceError) {
+      console.error('Microsoft callback: failed to persist integration', persistenceError)
+      return NextResponse.redirect(
+        buildIntegrationCallbackRedirect(origin, 'microsoft', 'error', persistenceError)
+      )
+    }
+
+    return NextResponse.redirect(
+      buildIntegrationCallbackRedirect(origin, 'microsoft', 'success')
+    )
+  } catch (err: unknown) {
+    const detail = getOAuthErrorDetail(err)
     console.error('Microsoft callback error:', detail)
-    const msg = encodeURIComponent(String(detail).slice(0, 200))
-    return NextResponse.redirect(`${origin}/onboarding/connect?error=microsoft_failed&detail=${msg}`)
+    return NextResponse.redirect(
+      buildIntegrationCallbackRedirect(origin, 'microsoft', 'error', String(detail))
+    )
   }
 }

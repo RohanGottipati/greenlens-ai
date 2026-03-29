@@ -181,10 +181,14 @@ export default function Home() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-black/60 border-t border-white/10">
+          <div className="md:hidden bg-black/60 border-t border-white/10 backdrop-blur-md">
             <div className="container-custom py-4 flex flex-col gap-3">
+              <a href="#problem" className="text-sm text-white/75 hover:text-white py-1">Problem</a>
+              <a href="#solution" className="text-sm text-white/75 hover:text-white py-1">Solution</a>
+              <a href="#product" className="text-sm text-white/75 hover:text-white py-1">Product</a>
+              <a href="#how-it-works" className="text-sm text-white/75 hover:text-white py-1">How it works</a>
               <Link href="/login" className="text-sm text-white/75 hover:text-white py-1">
-                Log in
+                Login
               </Link>
               <Link href="/login" className="btn-primary text-sm px-4 py-2 rounded-md font-medium text-center">
                 Get a sample report
@@ -194,26 +198,26 @@ export default function Home() {
         )}
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative hero-nature-bg overflow-hidden min-h-screen flex flex-col justify-center">
-        <div className="flex items-center gap-8 w-full">
+      {/* Hero Section — vertically centered in viewport below fixed nav */}
+      <section className="relative hero-nature-bg overflow-hidden min-h-[100dvh] flex flex-col">
+        <div className="flex-1 flex flex-col lg:flex-row lg:items-center justify-center gap-8 lg:gap-10 xl:gap-14 w-full max-w-[1280px] mx-auto px-6 sm:px-8 lg:px-10 pt-24 pb-14 lg:py-8">
           {/* Left: Text */}
           <div className="pl-20 lg:pl-28 shrink-0 w-[48%]">
             <h1 className="text-5xl sm:text-6xl lg:text-[5.75rem] font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
               Measure the environmental cost<br />of your enterprise AI
             </h1>
 
-            <div className="flex flex-col sm:flex-row items-start gap-4 fade-in-up animation-delay-100">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-center lg:justify-start gap-2 sm:gap-3">
               <Link
                 href="/login"
-                className="btn-primary text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto flex items-center justify-center gap-2"
+                className="btn-primary text-sm px-4 py-2 rounded-md font-medium w-full sm:w-auto flex items-center justify-center gap-1.5"
               >
                 Get a sample report
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
               <a
                 href="#how-it-works"
-                className="btn-secondary-dark text-base px-6 py-3 rounded-md font-medium w-full sm:w-auto text-center"
+                className="btn-secondary-dark text-sm px-4 py-2 rounded-md font-medium w-full sm:w-auto text-center"
               >
                 See how it works
               </a>

@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import AccountActions from '@/components/dashboard/AccountActions'
+import ActiveAnalysisBanner from '@/components/dashboard/ActiveAnalysisBanner'
+import ReportAvailabilityBanner from '@/components/dashboard/ReportAvailabilityBanner'
 
 const navItems = [
   { href: '/dashboard', label: 'Overview' },
@@ -22,6 +25,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user.id).single()
   if (!company) redirect('/onboarding')
+
+  const { data: latestReport } = await supabase.from('reports')
+    .select('reporting_period, report_mode, section_availability, executive_summary')
+    .eq('company_id', company.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const { analysisJob } = await getCompanyAnalysisState(supabase, company.id)
 
   return (
     <div className="min-h-screen bg-gray-950 flex">
@@ -55,6 +66,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
       {/* Main content */}
       <main className="flex-1 overflow-auto">
+        <ActiveAnalysisBanner
+          analysisJob={analysisJob}
+          reportingPeriod={latestReport?.reporting_period}
+          executiveSummary={latestReport?.executive_summary}
+        />
+        <ReportAvailabilityBanner report={latestReport ?? null} />
         {children}
       </main>
     </div>

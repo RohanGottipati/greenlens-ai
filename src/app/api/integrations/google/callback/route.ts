@@ -1,6 +1,27 @@
 import { NextResponse } from 'next/server'
+import axios from 'axios'
 import { createClient } from '@/lib/supabase/server'
 import { getGoogleAccessToken } from '@/lib/integrations/google'
+import {
+  buildIntegrationCallbackRedirect,
+  persistOAuthIntegration,
+} from '@/lib/integrations/oauth-helpers'
+
+function getOAuthErrorDetail(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const responseData = error.response?.data as {
+      error_description?: string
+      error?: string
+    } | undefined
+
+    return responseData?.error_description
+      ?? responseData?.error
+      ?? error.message
+      ?? 'unknown'
+  }
+
+  return error instanceof Error ? error.message : 'unknown'
+}
 
 export async function GET(request: Request) {
   const origin = new URL(request.url).origin
@@ -11,8 +32,9 @@ export async function GET(request: Request) {
   if (error || !code) {
     const desc = searchParams.get('error_description') ?? error ?? 'access_denied'
     console.error('Google OAuth error:', desc)
-    const msg = encodeURIComponent(String(desc).slice(0, 200))
-    return NextResponse.redirect(`${origin}/onboarding/connect?error=google_failed&detail=${msg}`)
+    return NextResponse.redirect(
+      buildIntegrationCallbackRedirect(origin, 'google', 'error', String(desc))
+    )
   }
 
   try {
@@ -37,18 +59,28 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/onboarding?error=company_missing`)
     }
 
-    await supabase.from('integrations').upsert({
+    const persistenceError = await persistOAuthIntegration(supabase, {
       company_id: company.id, provider: 'google',
       access_token, refresh_token,
-      token_expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+      token_expires_at: expires_in
+        ? new Date(Date.now() + expires_in * 1000).toISOString()
+        : null,
       is_active: true
-    }, { onConflict: 'company_id,provider' })
+    })
 
-    return NextResponse.redirect(`${origin}/onboarding/connect?success=google`)
-  } catch (err: any) {
-    const detail = err.response?.data?.error_description ?? err.response?.data?.error ?? err.message ?? 'unknown'
+    if (persistenceError) {
+      console.error('Google callback: failed to persist integration', persistenceError)
+      return NextResponse.redirect(
+        buildIntegrationCallbackRedirect(origin, 'google', 'error', persistenceError)
+      )
+    }
+
+    return NextResponse.redirect(buildIntegrationCallbackRedirect(origin, 'google', 'success'))
+  } catch (err: unknown) {
+    const detail = getOAuthErrorDetail(err)
     console.error('Google callback error:', detail)
-    const msg = encodeURIComponent(String(detail).slice(0, 200))
-    return NextResponse.redirect(`${origin}/onboarding/connect?error=google_failed&detail=${msg}`)
+    return NextResponse.redirect(
+      buildIntegrationCallbackRedirect(origin, 'google', 'error', String(detail))
+    )
   }
 }

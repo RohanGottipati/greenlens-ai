@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import MitigationCard from '@/components/dashboard/MitigationCard'
+import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getSectionAvailability } from '@/lib/reports/report-availability'
 
 const clusterLabels: Record<string, { label: string; color: string; description: string }> = {
   classification_routing: {
@@ -21,17 +24,23 @@ const clusterLabels: Record<string, { label: string; color: string; description:
   },
 }
 
-export default async function ModelsPage() {
+interface ModelsPageProps {
+  searchParams?: Promise<{ reportId?: string }>
+}
+
+export default async function ModelsPage({ searchParams }: ModelsPageProps) {
+  const requestedReportId = (await searchParams)?.reportId ?? null
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).single()
+  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
+  const sectionAvailability = getSectionAvailability(report)
+  const modelEfficiencyAvailable = sectionAvailability.model_efficiency.status === 'available'
   const modelAnalysis = report.model_efficiency_analysis
   const statAnalysis = report.stat_analysis
   const anomalyDetected = report.anomaly_detected ?? statAnalysis?.anomaly_detection?.anomaly_detected ?? false
@@ -65,7 +74,16 @@ export default async function ModelsPage() {
         <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
       </div>
 
+      {!modelEfficiencyAvailable && (
+        <SectionAvailabilityNotice
+          title="Model efficiency analysis unavailable"
+          message={sectionAvailability.model_efficiency.message ?? 'Connect OpenAI and rerun analysis to populate this section.'}
+        />
+      )}
+
       {/* Efficiency score */}
+      {modelEfficiencyAvailable && (
+        <>
       <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
           <p className="text-gray-400 text-sm">Efficiency Score</p>
@@ -196,6 +214,8 @@ export default async function ModelsPage() {
           <p className="text-gray-400">No model usage data available.</p>
           <p className="text-gray-500 text-sm mt-2">Connect an OpenAI integration and run analysis to see model efficiency.</p>
         </div>
+      )}
+        </>
       )}
     </div>
   )

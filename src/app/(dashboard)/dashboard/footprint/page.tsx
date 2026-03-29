@@ -1,19 +1,28 @@
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import FootprintChart from '@/components/dashboard/FootprintChart'
+import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getSectionAvailability } from '@/lib/reports/report-availability'
 
-export default async function FootprintPage() {
+interface FootprintPageProps {
+  searchParams?: Promise<{ reportId?: string }>
+}
+
+export default async function FootprintPage({ searchParams }: FootprintPageProps) {
+  const requestedReportId = (await searchParams)?.reportId ?? null
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const { data: report } = await supabase.from('reports').select('*')
-    .eq('company_id', company!.id).order('created_at', { ascending: false }).limit(1).single()
+  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
+  const sectionAvailability = getSectionAvailability(report)
+  const carbonWaterAvailable = sectionAvailability.carbon_water.status === 'available'
   const footprint = report.footprint_detail
   // Synthesis writes carbon_by_model (array of {model, carbonKg, percentage})
   const byModel: { model: string; carbonKg: number; percentage: number }[] = footprint?.carbon_by_model ?? []
@@ -28,7 +37,16 @@ export default async function FootprintPage() {
         <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
       </div>
 
+      {!carbonWaterAvailable && (
+        <SectionAvailabilityNotice
+          title="Carbon and water analysis unavailable"
+          message={sectionAvailability.carbon_water.message ?? 'Connect OpenAI and rerun analysis to populate this section.'}
+        />
+      )}
+
       {/* Top metrics */}
+      {carbonWaterAvailable && (
+        <>
       <div className="grid grid-cols-3 gap-4 mb-8">
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
           <p className="text-gray-400 text-sm">Total Carbon</p>
@@ -116,6 +134,8 @@ export default async function FootprintPage() {
             'Carbon calculated using model-specific energy intensity (ArXiv 2505.09598), regional grid carbon intensity (EPA eGRID 2024 / IEA 2024), and a PUE of 1.1 for hyperscale data centres. Water consumption uses a WUE of 1.9 L/kWh (The Green Grid benchmark) with regional stress multipliers from the WRI Aqueduct database.'}
         </p>
       </div>
+        </>
+      )}
     </div>
   )
 }
