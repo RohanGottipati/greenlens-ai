@@ -1,6 +1,11 @@
 import { getMicrosoftLicenseDetails, getMicrosoftCopilotUsage } from '@/lib/integrations/microsoft'
 import {
+  buildAvailableSection,
   buildProviderStatus,
+  buildUnavailableSection,
+  buildUnsupportedProviderStatus,
+  supportsProviderCapability,
+  type SectionAvailability,
   type ProviderAnalysisStatus,
 } from '@/lib/analysis/provider-status'
 import { ensureFreshIntegration } from '@/lib/integrations/tokens'
@@ -44,9 +49,36 @@ export interface LicenseIntelligenceResult {
   potentialAnnualSavings: number
   renewalAlerts: RenewalAlert[]
   providerStatus: ProviderAnalysisStatus[]
+  availability: SectionAvailability
+}
+
+function buildUnsupportedLicenseMessage(provider: string) {
+  if (provider === 'openai') {
+    return 'OpenAI is connected for usage analysis, but does not provide license-seat analysis.'
+  }
+
+  if (provider === 'google') {
+    return 'Google Workspace is connected, but automated license analysis is not implemented in this build.'
+  }
+
+  return `${provider} is connected, but automated license analysis is not implemented in this build.`
+}
+
+function buildLicenseUnavailableMessage(integrations: IntegrationRecord[]) {
+  if (integrations.length === 0) {
+    return 'Connect Microsoft 365 to unlock license utilization reporting.'
+  }
+
+  const connectedProviders = integrations.map((integration) => integration.provider)
+  const providerList = connectedProviders.join(', ')
+
+  return `Connected providers (${providerList}) do not currently expose supported license analysis in this build. Connect Microsoft 365 to unlock license utilization reporting.`
 }
 
 export async function runLicenseIntelligence(integrations: IntegrationRecord[]): Promise<LicenseIntelligenceResult> {
+  const licenseIntegrations = integrations.filter((record) =>
+    supportsProviderCapability(record.provider, 'license')
+  )
   const results: LicenseIntelligenceResult = {
     providers: [],
     totalLicensedSeats: 0,
@@ -57,9 +89,22 @@ export async function runLicenseIntelligence(integrations: IntegrationRecord[]):
     potentialAnnualSavings: 0,
     renewalAlerts: [],
     providerStatus: [],
+    availability: buildUnavailableSection(buildLicenseUnavailableMessage(integrations)),
   }
 
-  for (const integration of integrations.filter((record) => record.provider === 'microsoft')) {
+  for (const integration of integrations) {
+    if (!supportsProviderCapability(integration.provider, 'license')) {
+      results.providerStatus.push(
+        buildUnsupportedProviderStatus(
+          integration.provider,
+          'license',
+          buildUnsupportedLicenseMessage(integration.provider)
+        )
+      )
+    }
+  }
+
+  for (const integration of licenseIntegrations) {
     try {
       const freshIntegration = await ensureFreshIntegration(integration)
       const licenseData = await getMicrosoftLicenseDetails(freshIntegration.access_token)
@@ -102,6 +147,7 @@ export async function runLicenseIntelligence(integrations: IntegrationRecord[]):
       results.providerStatus.push(
         buildProviderStatus({
           provider: integration.provider,
+          capability: 'license',
           status: 'fresh',
           message: reportRefreshDate
             ? `Microsoft Copilot activity refreshed on ${reportRefreshDate}.`
@@ -130,8 +176,17 @@ export async function runLicenseIntelligence(integrations: IntegrationRecord[]):
     }
   }
 
+  if (licenseIntegrations.length === 0) {
+    return results
+  }
+
   results.overallUtilizationRate = results.totalLicensedSeats > 0
     ? Math.round((results.totalActiveSeats / results.totalLicensedSeats) * 100) : 0
+  results.availability = buildAvailableSection(
+    results.totalLicensedSeats > 0
+      ? 'Supported license data loaded successfully.'
+      : 'Supported license data loaded successfully with no licensed seats found.'
+  )
 
   return results
 }

@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS reports (
   anomaly_detected BOOLEAN DEFAULT FALSE,
   trend_direction TEXT,
   carbon_percentile DECIMAL,
+  report_mode TEXT,
+  section_availability JSONB,
   executive_summary JSONB,
   footprint_detail JSONB,
   model_efficiency_analysis JSONB,
@@ -96,6 +98,8 @@ ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS last_progress_at TIMESTAMPTZ;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS anomaly_detected BOOLEAN DEFAULT FALSE;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS trend_direction TEXT;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS carbon_percentile DECIMAL;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS report_mode TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS section_availability JSONB;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS mitigation_strategies JSONB;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS prev_carbon_kg DECIMAL;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS prev_water_liters DECIMAL;

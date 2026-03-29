@@ -27,6 +27,20 @@ interface RegionalIntensityRecord {
 }
 
 export async function calculateCarbon(usageData: UsageRecord[]) {
+  if (usageData.length === 0) {
+    return {
+      totalCarbonKg: 0,
+      byModel: [] as Array<{ model: string, carbonKg: number, percentage: number }>,
+      alternativeCarbonKg: 0,
+      savingsKg: 0,
+      savingsPercentage: 0,
+      modelEfficiencyScore: null as number | null,
+      methodology: `Carbon = (tokens x energy_per_token x PUE) x regional_grid_intensity. ` +
+        `PUE=1.1 (hyperscale average). Energy intensity from ArXiv 2505.09598. ` +
+        `Grid intensity from EPA eGRID 2024 / IEA 2024.`
+    }
+  }
+
   const supabase = createAdminClient()
   // Run both table reads in parallel — they're independent and sequential was
   // the primary hang point when Supabase was slow.
@@ -98,7 +112,9 @@ export async function calculateCarbon(usageData: UsageRecord[]) {
     savingsKg: totalCarbonKg - (alternativeCarbonGrams / 1000),
     savingsPercentage: totalCarbonKg > 0
       ? Math.round(((totalCarbonKg - alternativeCarbonGrams / 1000) / totalCarbonKg) * 100) : 0,
-    modelEfficiencyScore: Math.round(Math.min(100, Math.max(1, weightedEfficiency))),
+    modelEfficiencyScore: totalTokens > 0
+      ? Math.round(Math.min(100, Math.max(1, weightedEfficiency)))
+      : null,
     methodology: `Carbon = (tokens x energy_per_token x PUE) x regional_grid_intensity. ` +
       `PUE=1.1 (hyperscale average). Energy intensity from ArXiv 2505.09598. ` +
       `Grid intensity from EPA eGRID 2024 / IEA 2024.`

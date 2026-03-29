@@ -2,7 +2,82 @@ import { backboard } from '@/lib/backboard/client'
 import { generateWithGemini } from '@/lib/gemini/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-async function loadIncentives(company: any) {
+interface CompanyProfile {
+  name?: string | null
+  industry?: string | null
+  international_offices?: string[] | null
+}
+
+interface UsageSummary {
+  totalRequests?: number
+  modelCount?: number
+  frontierModelPercentage?: number
+}
+
+interface CarbonWaterSummary {
+  totalCarbonKg?: number | null
+  totalWaterLiters?: number | null
+  totalWaterBottles?: number | null
+  modelEfficiencyScore?: number | null
+  modelTaskMismatchRate?: number | null
+  carbonSavingsKg?: number | null
+  waterSavingsLiters?: number | null
+}
+
+interface LicenseSummary {
+  totalLicensedSeats?: number
+  totalActiveSeats?: number
+  totalDormantSeats?: number
+  overallUtilizationRate?: number | null
+  estimatedAnnualLicenseCost?: number
+  potentialAnnualSavings?: number
+  renewalAlerts?: unknown[]
+}
+
+interface StatSummary {
+  error?: string
+  unavailable?: true
+  message?: string
+  anomaly_detection?: {
+    anomaly_detected?: boolean
+    max_z_score?: number
+  }
+  usage_trend?: {
+    trend_direction?: string
+    p_value?: number
+    projected_30d_requests?: number
+  }
+  carbon_percentile?: {
+    percentile?: number
+    relative_position?: string
+  }
+}
+
+interface TranslatorResponse {
+  decisions: unknown[]
+  incentivesAndBenefits: unknown[]
+  mitigationStrategies: unknown[]
+  hypeCycleContext: string
+  executiveNarrative: string
+  esgDisclosureText: string
+}
+
+function buildFallbackTranslatorResponse(): TranslatorResponse {
+  return {
+    decisions: [],
+    incentivesAndBenefits: [],
+    mitigationStrategies: [],
+    hypeCycleContext: '',
+    executiveNarrative: 'Analysis complete.',
+    esgDisclosureText: 'AI environmental data available in detailed report sections.',
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error'
+}
+
+async function loadIncentives(company: CompanyProfile) {
   const supabase = createAdminClient()
   const offices: string[] = company?.international_offices ?? []
   const regionFilter = offices.length > 0
@@ -16,12 +91,12 @@ async function loadIncentives(company: any) {
 }
 
 function buildPrompt(
-  usageResult: any,
-  carbonWaterResult: any,
-  licenseResult: any,
-  statResult: any,
-  company: any,
-  incentives: any[]
+  usageResult: UsageSummary,
+  carbonWaterResult: CarbonWaterSummary,
+  licenseResult: LicenseSummary,
+  statResult: StatSummary,
+  company: CompanyProfile,
+  incentives: Array<Record<string, unknown>>
 ) {
   return `
 You are writing the executive intelligence section of an AI governance and sustainability report.
@@ -107,21 +182,28 @@ Produce 3 mitigation strategies specifically for improving a score of ${carbonWa
 function parseTranslatorResponse(rawText: string, source: string) {
   const cleaned = rawText.trim().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
   if (!cleaned) throw new Error(`Empty response from ${source}`)
-  const parsed = JSON.parse(cleaned)
+  const parsed = JSON.parse(cleaned) as Partial<TranslatorResponse>
   if (!parsed.decisions || !Array.isArray(parsed.decisions)) {
     throw new Error(`Invalid response shape from ${source}`)
   }
-  return parsed
+  return {
+    decisions: parsed.decisions,
+    incentivesAndBenefits: parsed.incentivesAndBenefits ?? [],
+    mitigationStrategies: parsed.mitigationStrategies ?? [],
+    hypeCycleContext: parsed.hypeCycleContext ?? '',
+    executiveNarrative: parsed.executiveNarrative ?? 'Analysis complete.',
+    esgDisclosureText: parsed.esgDisclosureText ?? 'AI environmental data available in detailed report sections.',
+  } satisfies TranslatorResponse
 }
 
 // Backboard path — uses persistent thread with accumulated agent context
 export async function runStrategicTranslator(
   threadId: string,
-  usageResult: any,
-  carbonWaterResult: any,
-  licenseResult: any,
-  statResult: any,
-  company: any
+  usageResult: UsageSummary,
+  carbonWaterResult: CarbonWaterSummary,
+  licenseResult: LicenseSummary,
+  statResult: StatSummary,
+  company: CompanyProfile
 ) {
   const incentives = await loadIncentives(company)
   const prompt = buildPrompt(usageResult, carbonWaterResult, licenseResult, statResult, company, incentives ?? [])
@@ -129,25 +211,31 @@ export async function runStrategicTranslator(
   const response = await backboard.sendMessage(threadId, prompt)
 
   try {
-    const rawText = response?.content ?? response?.message ?? response?.text ?? ''
+    const payload = response as {
+      content?: string
+      message?: string
+      text?: string
+    } | null
+    const rawText = payload?.content ?? payload?.message ?? payload?.text ?? ''
     return parseTranslatorResponse(rawText, 'Backboard')
-  } catch (err: any) {
-    console.warn('Strategic translator parse error:', err.message, 'Raw response:', JSON.stringify(response)?.slice(0, 200))
-    return {
-      decisions: [], incentivesAndBenefits: [], mitigationStrategies: [],
-      hypeCycleContext: '', executiveNarrative: 'Analysis complete.',
-      esgDisclosureText: 'AI environmental data available in detailed report sections.'
-    }
+  } catch (err: unknown) {
+    console.warn(
+      'Strategic translator parse error:',
+      getErrorMessage(err),
+      'Raw response:',
+      JSON.stringify(response)?.slice(0, 200)
+    )
+    return buildFallbackTranslatorResponse()
   }
 }
 
 // Gemini path — stateless, all data passed in a single prompt
 export async function runStrategicTranslatorGemini(
-  usageResult: any,
-  carbonWaterResult: any,
-  licenseResult: any,
-  statResult: any,
-  company: any
+  usageResult: UsageSummary,
+  carbonWaterResult: CarbonWaterSummary,
+  licenseResult: LicenseSummary,
+  statResult: StatSummary,
+  company: CompanyProfile
 ) {
   const incentives = await loadIncentives(company)
   const prompt = buildPrompt(usageResult, carbonWaterResult, licenseResult, statResult, company, incentives ?? [])
@@ -156,12 +244,13 @@ export async function runStrategicTranslatorGemini(
 
   try {
     return parseTranslatorResponse(rawText, 'Gemini')
-  } catch (err: any) {
-    console.warn('Gemini strategic translator parse error:', err.message, 'Raw response:', rawText?.slice(0, 200))
-    return {
-      decisions: [], incentivesAndBenefits: [], mitigationStrategies: [],
-      hypeCycleContext: '', executiveNarrative: 'Analysis complete.',
-      esgDisclosureText: 'AI environmental data available in detailed report sections.'
-    }
+  } catch (err: unknown) {
+    console.warn(
+      'Gemini strategic translator parse error:',
+      getErrorMessage(err),
+      'Raw response:',
+      rawText?.slice(0, 200)
+    )
+    return buildFallbackTranslatorResponse()
   }
 }

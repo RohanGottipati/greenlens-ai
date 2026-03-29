@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import DownloadPDFButton from '@/components/dashboard/ESGExport'
+import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getSectionAvailability } from '@/lib/reports/report-availability'
 
 interface ESGPageProps {
   searchParams?: Promise<{ reportId?: string }>
@@ -19,6 +21,8 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
+  const sectionAvailability = getSectionAvailability(report)
+  const esgAvailable = sectionAvailability.esg.status === 'available'
   const esg = report?.esg_disclosure
 
   return (
@@ -30,30 +34,47 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
             <p className="text-gray-400">{company?.name}</p>
             <p className="text-gray-400">Reporting Period: {esg?.reporting_period ?? report.reporting_period}</p>
           </div>
-          <span className="bg-green-900 text-green-300 px-3 py-1 rounded-full text-sm font-medium">
-            GreenLens Verified
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+            esgAvailable ? 'bg-green-900 text-green-300' : 'bg-amber-900 text-amber-300'
+          }`}>
+            {esgAvailable ? 'GreenLens Verified' : 'Partial Report'}
           </span>
         </div>
+
+        {!esgAvailable && (
+          <div className="mb-8">
+            <SectionAvailabilityNotice
+              title="ESG environmental metrics unavailable"
+              message={sectionAvailability.esg.message ?? 'Connect OpenAI and rerun analysis to populate this section.'}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-6 mb-8">
           <div className="bg-gray-800 rounded-xl p-4">
             <p className="text-gray-400 text-sm">AI Carbon Footprint</p>
             <p className="text-3xl font-bold text-white mt-1">
-              {Math.round(esg?.carbon_kg ?? report.carbon_kg ?? 0)} kg
+              {esgAvailable && (esg?.carbon_kg ?? report.carbon_kg) != null
+                ? `${Math.round((esg?.carbon_kg ?? report.carbon_kg) as number)} kg`
+                : '—'}
             </p>
             <p className="text-gray-500 text-sm">CO2 equivalent</p>
           </div>
           <div className="bg-gray-800 rounded-xl p-4">
             <p className="text-gray-400 text-sm">AI Water Consumption</p>
             <p className="text-3xl font-bold text-white mt-1">
-              {Math.round((esg?.water_liters ?? report.water_liters ?? 0) / 1000)}k L
+              {esgAvailable && (esg?.water_liters ?? report.water_liters) != null
+                ? `${Math.round(((esg?.water_liters ?? report.water_liters) as number) / 1000)}k L`
+                : '—'}
             </p>
             <p className="text-gray-500 text-sm">Direct cooling consumption</p>
           </div>
           <div className="bg-gray-800 rounded-xl p-4">
             <p className="text-gray-400 text-sm">Model Efficiency Score</p>
             <p className="text-3xl font-bold text-white mt-1">
-              {esg?.model_efficiency_score ?? report.model_efficiency_score ?? '—'}/100
+              {esgAvailable && (esg?.model_efficiency_score ?? report.model_efficiency_score) != null
+                ? `${esg?.model_efficiency_score ?? report.model_efficiency_score}/100`
+                : '—'}
             </p>
             <p className="text-gray-500 text-sm">vs industry benchmark</p>
           </div>
@@ -83,7 +104,9 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
             </p>
             <p className="text-gray-400 text-sm">
               <span className="text-gray-300 font-medium">Environmental calculations:</span>{' '}
-              {esg?.carbon_methodology ?? 'Carbon = (tokens × energy_per_token × PUE) × regional_grid_intensity. PUE=1.1 (hyperscale average). Energy intensity from ArXiv 2505.09598. Grid intensity from EPA eGRID 2024 / IEA 2024.'}
+              {esgAvailable
+                ? (esg?.carbon_methodology ?? 'Carbon = (tokens × energy_per_token × PUE) × regional_grid_intensity. PUE=1.1 (hyperscale average). Energy intensity from ArXiv 2505.09598. Grid intensity from EPA eGRID 2024 / IEA 2024.')
+                : sectionAvailability.esg.message}
             </p>
           </div>
         </div>

@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
+import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getSectionAvailability } from '@/lib/reports/report-availability'
 
 interface LicensesPageProps {
   searchParams?: Promise<{ reportId?: string }>
@@ -18,6 +20,8 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
+  const sectionAvailability = getSectionAvailability(report)
+  const licenseAvailable = sectionAvailability.license.status === 'available'
   // license_intelligence is stored as the raw output from runLicenseIntelligence,
   // which uses camelCase field names.
   const license = report.license_intelligence as {
@@ -38,7 +42,16 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
         <p className="text-gray-400 mt-1">{company!.name} · {report.reporting_period}</p>
       </div>
 
+      {!licenseAvailable && (
+        <SectionAvailabilityNotice
+          title="License analysis unavailable"
+          message={sectionAvailability.license.message ?? 'Connect Microsoft 365 and rerun analysis to populate this section.'}
+        />
+      )}
+
       {/* Top metrics */}
+      {licenseAvailable && (
+        <>
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
           <p className="text-gray-400 text-sm">Utilization Rate</p>
@@ -164,9 +177,11 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-8 text-center">
           <p className="text-gray-400">No license data available.</p>
           <p className="text-gray-500 text-sm mt-2">
-            Connect a Microsoft 365 or Google Workspace integration to see seat utilization.
+            Connect a Microsoft 365 integration to see seat utilization.
           </p>
         </div>
+      )}
+        </>
       )}
     </div>
   )

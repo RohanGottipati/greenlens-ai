@@ -2,6 +2,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { resolvePersistedOAuthSuccess } from '@/lib/integrations/oauth-helpers'
 
 /** Slightly longer than server OpenAI timeout so the API can return a JSON error first. */
 const CONNECT_FETCH_TIMEOUT_MS = 25_000
@@ -40,6 +41,7 @@ function ConnectPageInner() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
   // On mount: load existing integrations from DB + handle success/error params from OAuth callback
   useEffect(() => {
@@ -56,15 +58,15 @@ function ConnectPageInner() {
         const { data: integrations } = await supabase.from('integrations')
           .select('provider').eq('company_id', company.id).eq('is_active', true)
 
-        const savedProviders = (integrations ?? []).map((i: any) => i.provider)
-
-        // Also include ?success=provider returned by the OAuth callback
-        const successParam = searchParams.get('success')
-        if (successParam && !savedProviders.includes(successParam)) {
-          savedProviders.push(successParam)
-        }
-
+        const savedProviders = (integrations ?? []).map((integration: { provider: string }) => integration.provider)
         setConnected(savedProviders)
+        const successParam = resolvePersistedOAuthSuccess(savedProviders, searchParams.get('success'))
+        if (successParam) {
+          const providerLabel = INTEGRATIONS.find((integration) => integration.id === successParam)?.name ?? successParam
+          setSuccess(`${providerLabel} connected successfully.`)
+        } else {
+          setSuccess(null)
+        }
       } catch (e) {
         console.error('Failed to load integrations:', e)
       } finally {
@@ -85,6 +87,7 @@ function ConnectPageInner() {
       }
       const detail = detailParam ? ` Error: ${decodeURIComponent(detailParam)}` : ''
       setError(`${base[errorParam] ?? 'Connection failed.'} ${hint[errorParam] ?? ''}${detail}`)
+      setSuccess(null)
     }
 
     loadConnected()
@@ -105,6 +108,7 @@ function ConnectPageInner() {
       if (res.ok) {
         setConnected(prev => prev.includes('openai') ? prev : [...prev, 'openai'])
         setOpenaiKey('')
+        setSuccess('OpenAI connected successfully.')
       } else {
         const data = await res.json().catch(() => ({}))
         setError((data as { error?: string }).error ?? 'API key invalid or could not be verified.')
@@ -142,6 +146,12 @@ function ConnectPageInner() {
         {error && (
           <div className="bg-red-950 border border-red-800 rounded-xl p-3 mb-4">
             <p className="text-red-300 text-sm">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-green-950 border border-green-800 rounded-xl p-3 mb-4">
+            <p className="text-green-300 text-sm">{success}</p>
           </div>
         )}
 

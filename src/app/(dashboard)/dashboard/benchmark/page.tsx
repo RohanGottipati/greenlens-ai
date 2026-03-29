@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
+import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getSectionAvailability } from '@/lib/reports/report-availability'
 
 interface BenchmarkPageProps {
   searchParams?: Promise<{ reportId?: string }>
@@ -18,6 +20,8 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
+  const sectionAvailability = getSectionAvailability(report)
+  const benchmarkAvailable = sectionAvailability.benchmark.status === 'available'
   const benchmark = report.benchmark_data
   const stat = report.stat_analysis
   const carbonPercentile = report.carbon_percentile ?? stat?.carbon_percentile?.percentile ?? 0
@@ -31,7 +35,16 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
         <p className="text-gray-400 mt-1">{company!.name} · {company!.industry?.replace(/_/g, ' ')}</p>
       </div>
 
+      {!benchmarkAvailable && (
+        <SectionAvailabilityNotice
+          title="Benchmark analysis unavailable"
+          message={sectionAvailability.benchmark.message ?? 'Connect OpenAI and rerun analysis to populate this section.'}
+        />
+      )}
+
       {/* Percentile cards */}
+      {benchmarkAvailable && (
+        <>
       <div className="grid grid-cols-2 gap-4 mb-8">
         <div className="bg-gray-800 border border-gray-700 rounded-xl p-6">
           <p className="text-gray-400 text-sm mb-1">Carbon Intensity Percentile</p>
@@ -129,6 +142,8 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
           </div>
           <p className="text-gray-600 text-xs mt-3">{stat.anomaly_detection.method}</p>
         </div>
+      )}
+        </>
       )}
     </div>
   )

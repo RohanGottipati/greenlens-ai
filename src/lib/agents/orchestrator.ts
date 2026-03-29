@@ -3,8 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { PostgrestError } from '@supabase/supabase-js'
 import { backboard, FALLBACK_TRANSLATOR_OUTPUT } from '@/lib/backboard/client'
 import {
-  buildUnsupportedProviderStatus,
+  buildReportAvailability,
   deriveDataFreshness,
+  type ReportAvailability,
 } from '@/lib/analysis/provider-status'
 import {
   getNextPipelineStep,
@@ -22,7 +23,10 @@ import {
 import { calculateCarbon } from '@/lib/calculations/carbon'
 import type { IntegrationRecord } from '@/lib/integrations/types'
 import { runUsageAnalyst, type UsageAnalysisResult } from './usage-analyst'
-import { runCarbonWaterAccountant } from './carbon-water-accountant'
+import {
+  runCarbonWaterAccountant,
+  type CarbonWaterAccountantResult,
+} from './carbon-water-accountant'
 import {
   runLicenseIntelligence,
   type LicenseIntelligenceResult,
@@ -30,12 +34,13 @@ import {
 import { runStrategicTranslator, runStrategicTranslatorGemini } from './strategic-translator'
 import { runSynthesis } from './synthesis'
 import {
+  buildUnavailableStatAnalysis,
   runStatAnalysis,
-  type StatAnalysisResult,
+  type StatAnalysisRunResult,
 } from '@/lib/analysis/run-stat-analysis'
 
-type StatAnalysisOutput = StatAnalysisResult | { error: string }
-type CarbonWaterResult = Awaited<ReturnType<typeof runCarbonWaterAccountant>>
+type StatAnalysisOutput = StatAnalysisRunResult
+type CarbonWaterResult = CarbonWaterAccountantResult
 type SavedOutputStep = Exclude<PipelineStep, 'synthesis'>
 type SavedPipelineOutputs = Partial<Record<SavedOutputStep, unknown>>
 
@@ -419,6 +424,14 @@ async function executePipelineStep(
 
     case 'stat_analysis': {
       const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
+      if (usageResult.availability.status === 'unavailable') {
+        return {
+          output: buildUnavailableStatAnalysis(
+            usageResult.availability.message ?? 'Usage data is unavailable.'
+          ),
+        }
+      }
+
       const company = await getCompany(supabase, companyId)
       const precomputedCarbon = await withTimeout(
         'Carbon baseline',
@@ -439,6 +452,17 @@ async function executePipelineStep(
     case 'carbon_water_accountant': {
       const usageResult = requireOutput<UsageAnalysisResult>(artifacts.outputs, 'usage_analyst')
       const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
+
+       if (usageResult.availability.status === 'unavailable') {
+        const carbonWaterResult = await withTimeout(
+          'Carbon & water accountant',
+          runCarbonWaterAccountant(usageResult, statResult),
+          15000
+        )
+
+        return { output: carbonWaterResult }
+      }
+
       const precomputedCarbon = await withTimeout(
         'Carbon baseline',
         calculateCarbon(usageResult.normalizedUsage),
@@ -471,6 +495,29 @@ async function executePipelineStep(
       const licenseResult = requireOutput<LicenseIntelligenceResult>(artifacts.outputs, 'license_intelligence')
       const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
       const company = await getCompany(supabase, companyId)
+      const reportAvailability = buildReportAvailability({
+        usage: usageResult.availability,
+        license: licenseResult.availability,
+      })
+
+      if (
+        usageResult.availability.status === 'unavailable' ||
+        usageResult.totalRequests === 0 ||
+        carbonWaterResult.modelEfficiencyScore == null
+      ) {
+        return {
+          output: usageResult.availability.status === 'unavailable'
+            ? buildPartialTranslation(usageResult, licenseResult, company, reportAvailability)
+            : buildFallbackTranslation(
+              usageResult,
+              carbonWaterResult,
+              licenseResult,
+              statResult,
+              company
+            ),
+        }
+      }
+
       const threadId = await prepareStrategicTranslatorThread(
         supabase,
         claim.job.id,
@@ -564,23 +611,14 @@ async function executePipelineStep(
       const licenseResult = requireOutput<LicenseIntelligenceResult>(artifacts.outputs, 'license_intelligence')
       const translatorResult = requireOutput<any>(artifacts.outputs, 'strategic_translator')
       const statResult = requireOutput<StatAnalysisOutput>(artifacts.outputs, 'stat_analysis')
-      const integrations = await getActiveIntegrations(supabase, companyId)
-
       const providerStatuses = [
         ...(usageResult.providerStatus ?? []),
         ...(licenseResult.providerStatus ?? []),
-        ...integrations
-          .filter((integration) =>
-            integration.provider !== 'openai' &&
-            integration.provider !== 'microsoft'
-          )
-          .map((integration) =>
-            buildUnsupportedProviderStatus(
-              integration.provider,
-              `${integration.provider} is connected but is not yet included in the automated analysis pipeline.`
-            )
-          ),
       ]
+      const reportAvailability = buildReportAvailability({
+        usage: usageResult.availability,
+        license: licenseResult.availability,
+      })
 
       const reportId = await withTimeout(
         'Synthesis',
@@ -591,6 +629,8 @@ async function executePipelineStep(
           translator: translatorResult,
           statAnalysis: statResult,
           meta: {
+            reportMode: reportAvailability.reportMode,
+            sectionAvailability: reportAvailability.sectionAvailability,
             dataFreshness: deriveDataFreshness(providerStatuses),
             providerStatuses,
           },
@@ -714,12 +754,74 @@ export async function runPipeline(jobId: string, companyId: string) {
   return advanceAnalysisJob(jobId, companyId)
 }
 
+function buildLicenseRightsizingDecision(license: LicenseIntelligenceResult) {
+  return {
+    title: 'Right-size AI licenses at renewal',
+    situation: `${license.totalDormantSeats} of ${license.totalLicensedSeats} licensed seats are inactive. Reducing seat count at renewal captures immediate savings.`,
+    carbonSavedKg: 0,
+    waterSavedLiters: 0,
+    financialImpact: `$${license.potentialAnnualSavings?.toLocaleString()}/year`,
+    theDecision: 'Reduce licensed seat count to active users plus a 15% buffer.',
+    teamEffort: 'Procurement action at renewal date',
+    riskOfInaction: `$${license.potentialAnnualSavings?.toLocaleString()} in wasted spend annually.`,
+    urgency: 'Act Before Renewal',
+    impactScore: 7,
+  }
+}
+
+function buildPartialTranslation(
+  usage: UsageAnalysisResult,
+  license: LicenseIntelligenceResult,
+  company: any,
+  reportAvailability: ReportAvailability
+) {
+  const decisions: any[] = []
+
+  if (license.availability.status === 'available' && license.potentialAnnualSavings > 0) {
+    decisions.push(buildLicenseRightsizingDecision(license))
+  }
+
+  const unavailableSections = Object.entries(reportAvailability.sectionAvailability)
+    .filter(([, section]) => section.status === 'unavailable')
+    .map(([sectionName]) => sectionName.replace(/_/g, ' '))
+
+  const usageMessage = usage.availability.message
+    ?? 'Supported usage data is unavailable in this build.'
+  const licenseMessage = license.availability.status === 'available'
+    ? `Microsoft 365 license utilization is available: ${license.overallUtilizationRate}% across ${license.totalLicensedSeats} seats.`
+    : license.availability.message ?? 'No supported license analysis is available.'
+
+  return {
+    decisions,
+    incentivesAndBenefits: [],
+    mitigationStrategies: [],
+    hypeCycleContext: '',
+    executiveNarrative: [
+      `${company?.name ?? 'Your organisation'} has a partial GreenLens report.`,
+      usageMessage,
+      licenseMessage,
+      unavailableSections.length > 0
+        ? `Unavailable sections in this run: ${unavailableSections.join(', ')}.`
+        : '',
+      'Connect OpenAI to unlock usage, carbon, benchmark, and ESG reporting.',
+    ].filter(Boolean).join(' '),
+    esgDisclosureText: [
+      `${company?.name ?? 'The organisation'} received a partial GreenLens report for this period.`,
+      usageMessage,
+      'Usage-derived environmental metrics were not calculated because a supported usage provider was not connected.',
+      license.availability.status === 'available'
+        ? `Microsoft 365 license utilization remained available at ${license.overallUtilizationRate}% across ${license.totalLicensedSeats} seats.`
+        : '',
+    ].filter(Boolean).join(' '),
+  }
+}
+
 // Generates basic strategic output from data without requiring Backboard/LLM
 function buildFallbackTranslation(usage: any, carbonWater: any, license: any, stat: any, company: any) {
   const decisions: any[] = []
   const mitigationStrategies: any[] = []
 
-  if (carbonWater.modelTaskMismatchRate > 20) {
+  if ((carbonWater.modelTaskMismatchRate ?? 0) > 20) {
     decisions.push({
       title: 'Right-size models for classification tasks',
       situation: `${carbonWater.modelTaskMismatchRate}% of API calls use frontier models for tasks suited to smaller models. Switching these to efficient alternatives reduces costs and carbon.`,
@@ -735,21 +837,10 @@ function buildFallbackTranslation(usage: any, carbonWater: any, license: any, st
   }
 
   if (license.potentialAnnualSavings > 0) {
-    decisions.push({
-      title: 'Right-size AI licenses at renewal',
-      situation: `${license.totalDormantSeats} of ${license.totalLicensedSeats} licensed seats are inactive. Reducing seat count at renewal captures immediate savings.`,
-      carbonSavedKg: 0,
-      waterSavedLiters: 0,
-      financialImpact: `$${license.potentialAnnualSavings?.toLocaleString()}/year`,
-      theDecision: 'Reduce licensed seat count to active users plus a 15% buffer.',
-      teamEffort: 'Procurement action at renewal date',
-      riskOfInaction: `$${license.potentialAnnualSavings?.toLocaleString()} in wasted spend annually.`,
-      urgency: 'Act Before Renewal',
-      impactScore: 7
-    })
+    decisions.push(buildLicenseRightsizingDecision(license))
   }
 
-  if (carbonWater.modelEfficiencyScore < 60) {
+  if (carbonWater.modelEfficiencyScore != null && carbonWater.modelEfficiencyScore < 60) {
     mitigationStrategies.push(
       {
         strategy: 'Implement model routing by task complexity',
@@ -775,11 +866,15 @@ function buildFallbackTranslation(usage: any, carbonWater: any, license: any, st
     )
   }
 
+  const efficiencyNarrative = carbonWater.modelEfficiencyScore == null
+    ? 'No model efficiency score was calculated because no supported usage was recorded in the coverage window.'
+    : carbonWater.modelEfficiencyScore < 60
+      ? `Model efficiency score of ${carbonWater.modelEfficiencyScore}/100 indicates significant optimisation opportunity.`
+      : `Model efficiency score of ${carbonWater.modelEfficiencyScore}/100 is above the 60-point threshold.`
+
   const narrative = [
     `${company?.name ?? 'Your organisation'} consumed ${carbonWater.totalCarbonKg?.toFixed(1)} kg CO2e and ${carbonWater.totalWaterLiters?.toLocaleString()} liters of water through AI usage this period.`,
-    carbonWater.modelEfficiencyScore < 60
-      ? `Model efficiency score of ${carbonWater.modelEfficiencyScore}/100 indicates significant optimisation opportunity.`
-      : `Model efficiency score of ${carbonWater.modelEfficiencyScore}/100 is above the 60-point threshold.`,
+    efficiencyNarrative,
     decisions.length > 0 ? `${decisions.length} strategic decision${decisions.length > 1 ? 's' : ''} identified this period.` : ''
   ].filter(Boolean).join(' ')
 

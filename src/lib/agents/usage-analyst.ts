@@ -1,7 +1,12 @@
 import { getOpenAIUsage } from '@/lib/integrations/openai'
 import { isFrontierModel } from '@/lib/analysis/model-classification'
 import {
+  buildAvailableSection,
   buildProviderStatus,
+  buildUnavailableSection,
+  buildUnsupportedProviderStatus,
+  supportsProviderCapability,
+  type SectionAvailability,
   type ProviderAnalysisStatus,
 } from '@/lib/analysis/provider-status'
 import { ensureFreshIntegration } from '@/lib/integrations/tokens'
@@ -31,6 +36,7 @@ export interface UsageAnalysisResult {
   latestCompleteDay: string | null
   asOf: string | null
   providerStatus: ProviderAnalysisStatus[]
+  availability: SectionAvailability
 }
 
 type RawUsageRecord = Omit<NormalizedUsage, 'behaviorCluster'>
@@ -51,6 +57,29 @@ function maxDate(left: string | null, right: string | null) {
   return left > right ? left : right
 }
 
+function buildUnsupportedUsageMessage(provider: string) {
+  if (provider === 'microsoft') {
+    return 'Microsoft 365 is connected for license analysis, but automated usage analysis is not implemented in this build.'
+  }
+
+  if (provider === 'google') {
+    return 'Google Workspace is connected, but automated usage analysis is not implemented in this build.'
+  }
+
+  return `${provider} is connected, but automated usage analysis is not implemented in this build.`
+}
+
+function buildUsageUnavailableMessage(integrations: IntegrationRecord[]) {
+  if (integrations.length === 0) {
+    return 'Connect OpenAI to unlock usage, carbon, benchmark, and ESG reporting.'
+  }
+
+  const connectedProviders = integrations.map((integration) => integration.provider)
+  const providerList = connectedProviders.join(', ')
+
+  return `Connected providers (${providerList}) do not currently expose supported usage analysis in this build. Connect OpenAI to unlock usage, carbon, benchmark, and ESG reporting.`
+}
+
 export async function runUsageAnalyst(
   integrations: IntegrationRecord[],
   { demoRunIndex = 1 }: UsageAnalystOptions = {}
@@ -62,8 +91,23 @@ export async function runUsageAnalyst(
   let coverageEnd: string | null = null
   let latestCompleteDay: string | null = null
   let asOf: string | null = null
+  const usageIntegrations = integrations.filter((record) =>
+    supportsProviderCapability(record.provider, 'usage')
+  )
 
-  for (const integration of integrations.filter((record) => record.provider === 'openai')) {
+  for (const integration of integrations) {
+    if (!supportsProviderCapability(integration.provider, 'usage')) {
+      providerStatus.push(
+        buildUnsupportedProviderStatus(
+          integration.provider,
+          'usage',
+          buildUnsupportedUsageMessage(integration.provider)
+        )
+      )
+    }
+  }
+
+  for (const integration of usageIntegrations) {
     try {
       const freshIntegration = await ensureFreshIntegration(integration)
       const usage = await getOpenAIUsage(freshIntegration.access_token, 30, demoRunIndex)
@@ -87,6 +131,7 @@ export async function runUsageAnalyst(
       providerStatus.push(
         buildProviderStatus({
           provider: integration.provider,
+          capability: 'usage',
           status: 'fresh',
           message: `OpenAI usage data loaded through ${usage.latestCompleteDay}.`,
           coverageStart: usage.coverageStart,
@@ -98,6 +143,25 @@ export async function runUsageAnalyst(
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown OpenAI usage failure'
       throw new Error(`OpenAI usage collection failed: ${message}`)
+    }
+  }
+
+  if (usageIntegrations.length === 0) {
+    return {
+      normalizedUsage: allUsage,
+      dailyRequestCounts: [],
+      totalRequests: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      modelCount: 0,
+      frontierModelPercentage: 0,
+      dominantProvider: 'unknown',
+      coverageStart,
+      coverageEnd,
+      latestCompleteDay,
+      asOf,
+      providerStatus,
+      availability: buildUnavailableSection(buildUsageUnavailableMessage(integrations)),
     }
   }
 
@@ -132,6 +196,11 @@ export async function runUsageAnalyst(
     latestCompleteDay,
     asOf,
     providerStatus,
+    availability: buildAvailableSection(
+      totalRequests > 0
+        ? 'Supported usage data loaded successfully.'
+        : 'Supported usage data loaded successfully with no requests recorded in the coverage window.'
+    ),
   }
 }
 

@@ -4,16 +4,58 @@ import {
   isFrontierModel,
   suggestSmallerModel,
 } from '@/lib/analysis/model-classification'
-import type { StatAnalysisResult, TaskCluster } from '@/lib/analysis/run-stat-analysis'
-import type { NormalizedUsage } from './usage-analyst'
+import type { StatAnalysisRunResult, TaskCluster } from '@/lib/analysis/run-stat-analysis'
+import type { UsageAnalysisResult } from './usage-analyst'
 
 type CarbonCalculationResult = Awaited<ReturnType<typeof calculateCarbon>>
 
+export interface CarbonWaterAccountantResult {
+  totalCarbonKg: number | null
+  carbonByModel: Array<{ model: string; carbonKg: number; percentage: number }>
+  alternativeCarbonKg: number | null
+  carbonSavingsKg: number | null
+  carbonSavingsPercentage: number | null
+  carbonMethodology: string | null
+  totalWaterLiters: number | null
+  totalWaterBottles: number | null
+  alternativeWaterLiters: number | null
+  waterSavingsLiters: number | null
+  waterMethodology: string | null
+  modelEfficiencyScore: number | null
+  modelTaskMismatchRate: number | null
+  mismatchedModelClusters: Array<{
+    model: string
+    taskCategory: string
+    suggestedAlternative: string | null
+  }>
+  unavailableReason: string | null
+}
+
 export async function runCarbonWaterAccountant(
-  usageResult: { normalizedUsage: NormalizedUsage[], frontierModelPercentage: number },
-  statResult: StatAnalysisResult | { error: string },
+  usageResult: Pick<UsageAnalysisResult, 'normalizedUsage' | 'frontierModelPercentage' | 'availability'>,
+  statResult: StatAnalysisRunResult,
   precomputedCarbon?: CarbonCalculationResult
-) {
+): Promise<CarbonWaterAccountantResult> {
+  if (usageResult.availability.status === 'unavailable') {
+    return {
+      totalCarbonKg: null,
+      carbonByModel: [],
+      alternativeCarbonKg: null,
+      carbonSavingsKg: null,
+      carbonSavingsPercentage: null,
+      carbonMethodology: null,
+      totalWaterLiters: null,
+      totalWaterBottles: null,
+      alternativeWaterLiters: null,
+      waterSavingsLiters: null,
+      waterMethodology: null,
+      modelEfficiencyScore: null,
+      modelTaskMismatchRate: null,
+      mismatchedModelClusters: [],
+      unavailableReason: usageResult.availability.message,
+    }
+  }
+
   const carbon = precomputedCarbon ?? await calculateCarbon(usageResult.normalizedUsage)
   const primaryRegion = usageResult.normalizedUsage[0]?.region?.includes('eu')
     ? 'europe' : usageResult.normalizedUsage[0]?.region?.includes('west') ? 'us-west' : 'us-east'
@@ -52,6 +94,7 @@ export async function runCarbonWaterAccountant(
       model: cluster.model,
       taskCategory: cluster.task_category,
       suggestedAlternative: suggestSmallerModel(cluster.model)
-    }))
+    })),
+    unavailableReason: null,
   }
 }

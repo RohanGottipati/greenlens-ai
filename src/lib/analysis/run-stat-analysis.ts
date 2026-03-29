@@ -52,6 +52,23 @@ export interface StatAnalysisResult {
   }
 }
 
+export interface StatAnalysisUnavailableResult {
+  unavailable: true
+  message: string
+}
+
+export type StatAnalysisRunResult =
+  | StatAnalysisResult
+  | StatAnalysisUnavailableResult
+  | { error: string }
+
+export function buildUnavailableStatAnalysis(message: string): StatAnalysisUnavailableResult {
+  return {
+    unavailable: true,
+    message,
+  }
+}
+
 function mean(arr: number[]): number {
   if (arr.length === 0) return 0
   return arr.reduce((s, v) => s + v, 0) / arr.length
@@ -219,7 +236,7 @@ export async function runStatAnalysis(payload: {
   dailyRequestCounts: number[]
   totalCarbonKg: number
   industry: string
-}): Promise<StatAnalysisResult | { error: string }> {
+}): Promise<StatAnalysisRunResult> {
   try {
     return {
       anomaly_detection: detectUsageAnomalies(payload.dailyRequestCounts),

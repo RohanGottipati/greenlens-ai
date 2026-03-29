@@ -20,7 +20,7 @@ test('upsertAgentOutput persists step output with an idempotent conflict target'
         },
       }
     },
-  } as any
+  } as unknown as Parameters<typeof upsertAgentOutput>[0]
 
   await upsertAgentOutput(
     supabase,
@@ -80,7 +80,7 @@ test('upsertReportWithFallback retries with missing columns stripped and keeps j
         },
       }
     },
-  } as any
+  } as unknown as Parameters<typeof upsertReportWithFallback>[0]
 
   const report = await upsertReportWithFallback(supabase, {
     job_id: 'job-1',

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import AccountActions from '@/components/dashboard/AccountActions'
 import ActiveAnalysisBanner from '@/components/dashboard/ActiveAnalysisBanner'
+import ReportAvailabilityBanner from '@/components/dashboard/ReportAvailabilityBanner'
 
 const navItems = [
   { href: '/dashboard', label: 'Overview' },
@@ -26,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!company) redirect('/onboarding')
 
   const { data: latestReport } = await supabase.from('reports')
-    .select('reporting_period, executive_summary')
+    .select('reporting_period, report_mode, section_availability, executive_summary')
     .eq('company_id', company.id)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -70,6 +71,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           reportingPeriod={latestReport?.reporting_period}
           executiveSummary={latestReport?.executive_summary}
         />
+        <ReportAvailabilityBanner report={latestReport ?? null} />
         {children}
       </main>
     </div>
