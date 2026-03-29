@@ -12,6 +12,8 @@ const GOOGLE_GEMINI_PRODUCT_ID = '101047'
 const GOOGLE_LICENSE_PAGE_SIZE = 1000
 const GOOGLE_USER_PAGE_SIZE = 500
 const GOOGLE_ACTIVITY_PAGE_SIZE = 1000
+const GOOGLE_USAGE_SPIKE_SAMPLE_LIMIT = 5
+const UNKNOWN_GOOGLE_ACTIVITY_VALUE = 'unknown'
 
 interface GoogleTokenResponse {
   access_token: string
@@ -53,9 +55,30 @@ interface GoogleActivityActor {
   profileId?: string
 }
 
+export interface GoogleActivityEventParameter {
+  name?: string
+  value?: string
+  intValue?: string | number
+  boolValue?: boolean
+  multiValue?: string[]
+  messageValue?: {
+    parameter?: Array<{
+      name?: string
+      value?: string
+    }>
+  }
+}
+
+export interface GoogleActivityEvent {
+  type?: string
+  name?: string
+  parameters?: GoogleActivityEventParameter[]
+}
+
 export interface GoogleActivityItem {
   id?: GoogleActivityId
   actor?: GoogleActivityActor
+  events?: GoogleActivityEvent[]
 }
 
 interface GoogleActivitiesListResponse {
@@ -75,6 +98,46 @@ export interface GoogleLicenseActivitySummary {
   asOf: string
 }
 
+export type GoogleUsageSpikeStatus = 'disabled' | 'collected' | 'failed' | 'unavailable'
+
+export interface GoogleUsageSpikeDailyEventCount {
+  date: string
+  eventCount: number
+}
+
+export interface GoogleUsageSpikeBreakdownBucket {
+  value: string
+  eventCount: number
+}
+
+export interface GoogleUsageSpikeSampleEvent {
+  time: string | null
+  eventName: string
+  actorKey: string | null
+  actorEmail: string | null
+  applicationName: string | null
+  parameters: Record<string, string>
+}
+
+export interface ExploratoryGoogleUsageSpike {
+  status: GoogleUsageSpikeStatus
+  message: string
+  coverageStart: string | null
+  coverageEnd: string | null
+  latestCompleteDay: string | null
+  asOf: string | null
+  totalFeatureEvents: number
+  distinctActiveUsers: number
+  distinctLicensedActiveUsers: number
+  dailyFeatureEvents: GoogleUsageSpikeDailyEventCount[]
+  actionBreakdown: GoogleUsageSpikeBreakdownBucket[]
+  appBreakdown: GoogleUsageSpikeBreakdownBucket[]
+  eventCategoryBreakdown: GoogleUsageSpikeBreakdownBucket[]
+  featureSourceBreakdown: GoogleUsageSpikeBreakdownBucket[]
+  sampleEvents: GoogleUsageSpikeSampleEvent[]
+  normalizationLimits: string[]
+}
+
 interface CollectPaginatedGoogleItemsOptions<
   TPage extends { nextPageToken?: string | null },
   TItem,
@@ -85,8 +148,16 @@ interface CollectPaginatedGoogleItemsOptions<
   maxPages?: number
 }
 
+interface BuildGoogleUsageSpikeOptions {
+  coverageStart?: string | null
+  coverageEnd?: string | null
+  latestCompleteDay?: string | null
+  asOf?: string | null
+  sampleLimit?: number
+}
+
 function formatUtcDate(date: Date) {
-  return date.toISOString().split('T')[0]
+  return date.toISOString().split('T')[0] ?? date.toISOString()
 }
 
 function getUtcStartOfToday() {
@@ -102,6 +173,137 @@ function getUtcDateDaysAgo(daysBack: number) {
 
 function buildGoogleHeaders(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` }
+}
+
+function normalizeGoogleEmail(email?: string | null) {
+  const normalized = email?.trim().toLowerCase()
+  return normalized || null
+}
+
+function normalizeGoogleActivityValue(value: string | number | boolean | null | undefined) {
+  if (value == null) {
+    return null
+  }
+
+  const normalized = String(value).trim().toLowerCase()
+  return normalized || null
+}
+
+function normalizeGoogleActivityParameterValue(parameter: GoogleActivityEventParameter) {
+  const directValue = normalizeGoogleActivityValue(parameter.value)
+  if (directValue) {
+    return directValue
+  }
+
+  const intValue = normalizeGoogleActivityValue(parameter.intValue)
+  if (intValue) {
+    return intValue
+  }
+
+  if (typeof parameter.boolValue === 'boolean') {
+    return parameter.boolValue ? 'true' : 'false'
+  }
+
+  if (Array.isArray(parameter.multiValue) && parameter.multiValue.length > 0) {
+    const values = parameter.multiValue
+      .map((value) => normalizeGoogleActivityValue(value))
+      .filter((value): value is string => Boolean(value))
+
+    if (values.length > 0) {
+      return values.join(',')
+    }
+  }
+
+  const nestedValues = parameter.messageValue?.parameter
+    ?.map((entry) => {
+      const name = entry.name?.trim().toLowerCase()
+      const value = normalizeGoogleActivityValue(entry.value)
+      if (!name || !value) {
+        return null
+      }
+
+      return `${name}:${value}`
+    })
+    .filter((value): value is string => Boolean(value))
+
+  if (nestedValues && nestedValues.length > 0) {
+    return nestedValues.join(',')
+  }
+
+  return null
+}
+
+function incrementGoogleBucket(bucket: Map<string, number>, value: string | null | undefined) {
+  const normalizedValue = value?.trim() || UNKNOWN_GOOGLE_ACTIVITY_VALUE
+  bucket.set(normalizedValue, (bucket.get(normalizedValue) ?? 0) + 1)
+}
+
+function sortGoogleBuckets(bucket: Map<string, number>): GoogleUsageSpikeBreakdownBucket[] {
+  return [...bucket.entries()]
+    .sort(([leftValue, leftCount], [rightValue, rightCount]) =>
+      rightCount - leftCount || leftValue.localeCompare(rightValue)
+    )
+    .map(([value, eventCount]) => ({ value, eventCount }))
+}
+
+function getGoogleActivityDate(activity: GoogleActivityItem) {
+  const time = activity.id?.time
+  if (!time) {
+    return null
+  }
+
+  const date = time.split('T')[0]
+  return date || null
+}
+
+export function buildGoogleUsageSpikeWindow(daysBack: number) {
+  return {
+    coverageStart: formatUtcDate(getUtcDateDaysAgo(daysBack)),
+    coverageEnd: formatUtcDate(new Date()),
+    latestCompleteDay: formatUtcDate(getUtcDateDaysAgo(1)),
+    asOf: new Date().toISOString(),
+  }
+}
+
+export function normalizeGoogleActivityParameters(
+  parameters: GoogleActivityEventParameter[] | undefined
+) {
+  return (parameters ?? []).reduce<Record<string, string>>((accumulator, parameter) => {
+    const name = parameter.name?.trim()
+    if (!name) {
+      return accumulator
+    }
+
+    accumulator[name] =
+      normalizeGoogleActivityParameterValue(parameter) ?? UNKNOWN_GOOGLE_ACTIVITY_VALUE
+
+    return accumulator
+  }, {})
+}
+
+export function buildGoogleUsageSpikeEnvelope(
+  status: GoogleUsageSpikeStatus,
+  message: string,
+  overrides: Partial<Omit<ExploratoryGoogleUsageSpike, 'status' | 'message'>> = {}
+): ExploratoryGoogleUsageSpike {
+  return {
+    status,
+    message,
+    coverageStart: overrides.coverageStart ?? null,
+    coverageEnd: overrides.coverageEnd ?? null,
+    latestCompleteDay: overrides.latestCompleteDay ?? null,
+    asOf: overrides.asOf ?? null,
+    totalFeatureEvents: overrides.totalFeatureEvents ?? 0,
+    distinctActiveUsers: overrides.distinctActiveUsers ?? 0,
+    distinctLicensedActiveUsers: overrides.distinctLicensedActiveUsers ?? 0,
+    dailyFeatureEvents: overrides.dailyFeatureEvents ?? [],
+    actionBreakdown: overrides.actionBreakdown ?? [],
+    appBreakdown: overrides.appBreakdown ?? [],
+    eventCategoryBreakdown: overrides.eventCategoryBreakdown ?? [],
+    featureSourceBreakdown: overrides.featureSourceBreakdown ?? [],
+    sampleEvents: overrides.sampleEvents ?? [],
+    normalizationLimits: overrides.normalizationLimits ?? [],
+  }
 }
 
 export async function getGoogleAccessToken(code: string, redirectUri: string) {
@@ -220,13 +422,17 @@ export async function collectPaginatedGoogleItems<
 export function countDistinctGoogleLicensedUsers(assignments: GoogleLicenseAssignment[]) {
   return new Set(
     assignments
-      .map((assignment) => assignment.userId)
+      .map((assignment) => normalizeGoogleEmail(assignment.userId))
       .filter((userId): userId is string => Boolean(userId))
   ).size
 }
 
+export function getGoogleActivityActorEmail(activity: GoogleActivityItem) {
+  return normalizeGoogleEmail(activity.actor?.email)
+}
+
 export function getGoogleActivityUserKey(activity: GoogleActivityItem) {
-  return activity.actor?.email ?? activity.actor?.profileId ?? null
+  return getGoogleActivityActorEmail(activity) ?? activity.actor?.profileId ?? null
 }
 
 export function countDistinctGoogleActivityUsers(activities: GoogleActivityItem[]) {
@@ -235,6 +441,131 @@ export function countDistinctGoogleActivityUsers(activities: GoogleActivityItem[
       .map((activity) => getGoogleActivityUserKey(activity))
       .filter((userKey): userKey is string => Boolean(userKey))
   ).size
+}
+
+export function buildExploratoryGoogleUsageSpike(
+  licenseAssignments: GoogleLicenseAssignment[],
+  activities: GoogleActivityItem[],
+  {
+    coverageStart = null,
+    coverageEnd = null,
+    latestCompleteDay = null,
+    asOf = null,
+    sampleLimit = GOOGLE_USAGE_SPIKE_SAMPLE_LIMIT,
+  }: BuildGoogleUsageSpikeOptions = {}
+): ExploratoryGoogleUsageSpike {
+  const licensedEmails = new Set(
+    licenseAssignments
+      .map((assignment) => normalizeGoogleEmail(assignment.userId))
+      .filter((userId): userId is string => Boolean(userId))
+  )
+  const distinctActiveUsers = new Set<string>()
+  const distinctLicensedActiveUsers = new Set<string>()
+  const dailyFeatureEvents = new Map<string, number>()
+  const actionBreakdown = new Map<string, number>()
+  const appBreakdown = new Map<string, number>()
+  const eventCategoryBreakdown = new Map<string, number>()
+  const featureSourceBreakdown = new Map<string, number>()
+  const normalizationLimits = new Set<string>()
+  const sampleEvents: GoogleUsageSpikeSampleEvent[] = []
+  let totalFeatureEvents = 0
+
+  for (const activity of activities) {
+    const actorKey = getGoogleActivityUserKey(activity)
+    const actorEmail = getGoogleActivityActorEmail(activity)
+
+    if (actorKey) {
+      distinctActiveUsers.add(actorKey)
+    }
+
+    if (!actorEmail && activity.actor?.profileId) {
+      normalizationLimits.add(
+        'Some Gemini activity rows only exposed profileId, so licensed-user intersection may undercount active licensed users.'
+      )
+    }
+
+    const activityDate = getGoogleActivityDate(activity)
+    if (!activityDate && activity.id?.time) {
+      normalizationLimits.add(
+        'Some Gemini activity rows had non-standard timestamps and were excluded from daily rollups.'
+      )
+    }
+
+    const events = activity.events?.length
+      ? activity.events
+      : [{ name: 'feature_utilization', parameters: [] }]
+
+    if (!activity.events?.length) {
+      normalizationLimits.add(
+        'Some Gemini activity rows were missing event parameters and were bucketed under unknown values.'
+      )
+    }
+
+    if (actorEmail && licensedEmails.has(actorEmail) && events.length > 0) {
+      distinctLicensedActiveUsers.add(actorEmail)
+    }
+
+    for (const event of events) {
+      totalFeatureEvents += 1
+
+      if (activityDate) {
+        dailyFeatureEvents.set(
+          activityDate,
+          (dailyFeatureEvents.get(activityDate) ?? 0) + 1
+        )
+      }
+
+      const parameters = normalizeGoogleActivityParameters(event.parameters)
+
+      incrementGoogleBucket(actionBreakdown, parameters.action)
+      incrementGoogleBucket(appBreakdown, parameters.app_name)
+      incrementGoogleBucket(eventCategoryBreakdown, parameters.event_category)
+      incrementGoogleBucket(featureSourceBreakdown, parameters.feature_source)
+
+      if (sampleEvents.length < sampleLimit) {
+        sampleEvents.push({
+          time: activity.id?.time ?? null,
+          eventName: event.name?.trim() || 'feature_utilization',
+          actorKey,
+          actorEmail,
+          applicationName: activity.id?.applicationName ?? null,
+          parameters,
+        })
+      }
+    }
+  }
+
+  if (licensedEmails.size === 0 && totalFeatureEvents > 0) {
+    normalizationLimits.add(
+      'No Gemini license assignments were returned, so licensed-user intersection could not be validated.'
+    )
+  }
+
+  const status: GoogleUsageSpikeStatus = totalFeatureEvents > 0 ? 'collected' : 'unavailable'
+  const message = totalFeatureEvents > 0
+    ? 'Collected exploratory Gemini activity analytics for internal inspection only. Google usage remains unsupported in shipped reports.'
+    : 'No Gemini feature_utilization events were returned for the selected window.'
+
+  return buildGoogleUsageSpikeEnvelope(status, message, {
+    coverageStart,
+    coverageEnd,
+    latestCompleteDay,
+    asOf,
+    totalFeatureEvents,
+    distinctActiveUsers: distinctActiveUsers.size,
+    distinctLicensedActiveUsers: distinctLicensedActiveUsers.size,
+    dailyFeatureEvents: [...dailyFeatureEvents.entries()]
+      .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+      .map(([date, eventCount]) => ({ date, eventCount })),
+    actionBreakdown: sortGoogleBuckets(actionBreakdown),
+    appBreakdown: sortGoogleBuckets(appBreakdown),
+    eventCategoryBreakdown: sortGoogleBuckets(eventCategoryBreakdown),
+    featureSourceBreakdown: sortGoogleBuckets(featureSourceBreakdown),
+    sampleEvents,
+    normalizationLimits: [...normalizationLimits].sort((left, right) =>
+      left.localeCompare(right)
+    ),
+  })
 }
 
 export async function listGoogleGeminiLicenseAssignments(
@@ -343,6 +674,23 @@ export async function getGoogleLicenseActivitySummary(
   }
 }
 
-// Stage 2 groundwork lives here already: Gemini activity events are collected for
-// license utilization, but the app still keeps Google usage support disabled until
-// those events can be normalized into a trustworthy usage/carbon model.
+export async function getExploratoryGoogleUsageSpike(
+  accessToken: string,
+  daysBack: number = 30
+) {
+  const window = buildGoogleUsageSpikeWindow(daysBack)
+  const [licenseAssignments, geminiActivities] = await Promise.all([
+    listGoogleGeminiLicenseAssignments(accessToken),
+    listGoogleGeminiActivities(accessToken, daysBack),
+  ])
+
+  return buildExploratoryGoogleUsageSpike(
+    licenseAssignments,
+    geminiActivities,
+    window
+  )
+}
+
+// Stage 2 keeps Google usage support non-shipping on purpose. These helpers collect
+// internal Gemini activity analytics for inspection, while the product continues to
+// treat Google usage-derived reporting as unsupported until normalization is trusted.

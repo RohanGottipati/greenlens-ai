@@ -11,6 +11,12 @@ import {
 } from '@/lib/analysis/provider-status'
 import { ensureFreshIntegration } from '@/lib/integrations/tokens'
 import type { IntegrationRecord } from '@/lib/integrations/types'
+import {
+  buildGoogleUsageSpikeEnvelope,
+  buildGoogleUsageSpikeWindow,
+  getExploratoryGoogleUsageSpike,
+  type ExploratoryGoogleUsageSpike,
+} from '@/lib/integrations/google'
 
 export interface NormalizedUsage {
   model: string
@@ -37,13 +43,19 @@ export interface UsageAnalysisResult {
   asOf: string | null
   providerStatus: ProviderAnalysisStatus[]
   availability: SectionAvailability
+  googleUsageSpike?: ExploratoryGoogleUsageSpike | null
 }
 
 type RawUsageRecord = Omit<NormalizedUsage, 'behaviorCluster'>
+type GoogleUsageSpikeCollector = typeof getExploratoryGoogleUsageSpike
 
 interface UsageAnalystOptions {
   demoRunIndex?: number
+  googleUsageSpikeEnabled?: boolean
+  googleUsageSpikeCollector?: GoogleUsageSpikeCollector
 }
+
+const GOOGLE_USAGE_SPIKE_DAYS_BACK = 30
 
 function minDate(left: string | null, right: string | null) {
   if (!left) return right
@@ -80,9 +92,64 @@ function buildUsageUnavailableMessage(integrations: IntegrationRecord[]) {
   return `Connected providers (${providerList}) do not currently expose supported usage analysis in this build. Connect OpenAI to unlock usage, carbon, benchmark, and ESG reporting.`
 }
 
+function isGoogleUsageSpikeEnabled(override?: boolean) {
+  if (typeof override === 'boolean') {
+    return override
+  }
+
+  return process.env.ENABLE_GOOGLE_USAGE_SPIKE === 'true'
+}
+
+async function maybeCollectGoogleUsageSpike(
+  integrations: IntegrationRecord[],
+  {
+    enabled,
+    collector,
+  }: {
+    enabled?: boolean
+    collector?: GoogleUsageSpikeCollector
+  }
+) {
+  const googleIntegration = integrations.find((integration) => integration.provider === 'google')
+  if (!googleIntegration) {
+    return null
+  }
+
+  const coverageWindow = buildGoogleUsageSpikeWindow(GOOGLE_USAGE_SPIKE_DAYS_BACK)
+
+  if (!isGoogleUsageSpikeEnabled(enabled)) {
+    return buildGoogleUsageSpikeEnvelope(
+      'disabled',
+      'Exploratory Google usage collection is disabled. Set ENABLE_GOOGLE_USAGE_SPIKE=true to collect internal Gemini activity analytics.',
+      coverageWindow
+    )
+  }
+
+  try {
+    const freshIntegration = await ensureFreshIntegration(googleIntegration)
+    const activeCollector = collector ?? getExploratoryGoogleUsageSpike
+    return await activeCollector(
+      freshIntegration.access_token,
+      GOOGLE_USAGE_SPIKE_DAYS_BACK
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown Google usage spike failure'
+
+    return buildGoogleUsageSpikeEnvelope(
+      'failed',
+      `Exploratory Google usage collection failed: ${message}`,
+      coverageWindow
+    )
+  }
+}
+
 export async function runUsageAnalyst(
   integrations: IntegrationRecord[],
-  { demoRunIndex = 1 }: UsageAnalystOptions = {}
+  {
+    demoRunIndex = 1,
+    googleUsageSpikeEnabled,
+    googleUsageSpikeCollector,
+  }: UsageAnalystOptions = {}
 ): Promise<UsageAnalysisResult> {
   const allUsage: NormalizedUsage[] = []
   const providerStatus: ProviderAnalysisStatus[] = []
@@ -91,6 +158,10 @@ export async function runUsageAnalyst(
   let coverageEnd: string | null = null
   let latestCompleteDay: string | null = null
   let asOf: string | null = null
+  const googleUsageSpikePromise = maybeCollectGoogleUsageSpike(integrations, {
+    enabled: googleUsageSpikeEnabled,
+    collector: googleUsageSpikeCollector,
+  })
   const usageIntegrations = integrations.filter((record) =>
     supportsProviderCapability(record.provider, 'usage')
   )
@@ -146,6 +217,8 @@ export async function runUsageAnalyst(
     }
   }
 
+  const googleUsageSpike = await googleUsageSpikePromise
+
   if (usageIntegrations.length === 0) {
     return {
       normalizedUsage: allUsage,
@@ -162,6 +235,7 @@ export async function runUsageAnalyst(
       asOf,
       providerStatus,
       availability: buildUnavailableSection(buildUsageUnavailableMessage(integrations)),
+      googleUsageSpike,
     }
   }
 
@@ -201,6 +275,7 @@ export async function runUsageAnalyst(
         ? 'Supported usage data loaded successfully.'
         : 'Supported usage data loaded successfully with no requests recorded in the coverage window.'
     ),
+    googleUsageSpike,
   }
 }
 

@@ -227,6 +227,9 @@ export function getFakeGoogleDirectoryUsers() {
 export function getFakeGoogleGeminiActivities() {
   return Array.from({ length: 96 }, (_, index) => {
     const activityDay = ((index % 28) + 1).toString().padStart(2, '0')
+    const action = ['prompt_submit', 'summarize', 'draft'][index % 3]
+    const appName = ['gmail', 'docs', 'meet'][index % 3]
+    const featureSource = ['side_panel', 'toolbar'][index % 2]
     return [
       {
         id: {
@@ -238,6 +241,17 @@ export function getFakeGoogleGeminiActivities() {
           email: `gemini-user-${index + 1}@novatech.example`,
           profileId: `profile-${index + 1}`,
         },
+        events: [
+          {
+            name: 'feature_utilization',
+            parameters: [
+              { name: 'action', value: action },
+              { name: 'app_name', value: appName },
+              { name: 'event_category', value: 'assist' },
+              { name: 'feature_source', value: featureSource },
+            ],
+          },
+        ],
       },
       {
         id: {
@@ -249,6 +263,17 @@ export function getFakeGoogleGeminiActivities() {
           email: `gemini-user-${index + 1}@novatech.example`,
           profileId: `profile-${index + 1}`,
         },
+        events: [
+          {
+            name: 'feature_utilization',
+            parameters: [
+              { name: 'action', value: action },
+              { name: 'app_name', value: appName },
+              { name: 'event_category', value: 'assist' },
+              { name: 'feature_source', value: featureSource },
+            ],
+          },
+        ],
       },
     ]
   }).flat()
