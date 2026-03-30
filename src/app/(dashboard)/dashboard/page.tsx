@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+export const dynamic = 'force-dynamic'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import OverviewDashboard from '@/components/dashboard/OverviewDashboard'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
