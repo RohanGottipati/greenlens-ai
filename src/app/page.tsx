@@ -138,7 +138,9 @@ export default function Home() {
     <div className="min-h-screen bg-white text-[#1a1a1a]">
       {/* Navigation */}
       <nav
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${navSolid ? 'bg-[#14472c] border-b border-[#1a2e23]' : 'glass-header'}`}
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          navSolid ? 'bg-[#14472c] border-b border-[#1a2e23]' : 'bg-transparent border-b border-transparent'
+        }`}
         style={{ opacity: inProblemSection ? 1 - overlayOpacity : 1, pointerEvents: inProblemSection && overlayOpacity > 0.05 ? 'none' : 'auto', transition: 'opacity 80ms linear' }}
       >
         <div className="flex items-center justify-between h-16 px-6 lg:px-10">

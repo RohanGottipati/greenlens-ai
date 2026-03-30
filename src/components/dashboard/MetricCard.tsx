@@ -8,21 +8,21 @@ interface MetricCardProps {
 
 export default function MetricCard({ label, value, unit, delta, status }: MetricCardProps) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-      <p className="text-gray-400 text-sm mb-1">{label}</p>
-      <p className="text-2xl font-bold text-white">{value}</p>
-      {unit && <p className="text-gray-500 text-sm mt-0.5">{unit}</p>}
+    <div className="rounded-[20px] border border-[#eff2ef] bg-white p-5 shadow-[0_8px_26px_rgba(16,38,29,0.05)]">
+      <p className="mb-1 text-sm text-[#7f8f88]">{label}</p>
+      <p className="text-2xl font-bold text-[#152820]">{value}</p>
+      {unit && <p className="mt-0.5 text-sm text-[#9aa7a0]">{unit}</p>}
       <div className="flex items-center gap-2 mt-2">
         {delta !== null && delta !== undefined && (
-          <span className={`text-sm font-medium ${delta < 0 ? 'text-green-400' : 'text-red-400'}`}>
+          <span className={`text-sm font-medium ${delta < 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
             {delta > 0 ? '+' : ''}{delta}%
           </span>
         )}
         {status && (
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
             status === 'good'
-              ? 'bg-green-900 text-green-300'
-              : 'bg-yellow-900 text-yellow-300'
+              ? 'bg-emerald-50 text-emerald-800'
+              : 'bg-amber-50 text-amber-800'
           }`}>
             {status === 'good' ? 'On track' : 'Needs attention'}
           </span>
