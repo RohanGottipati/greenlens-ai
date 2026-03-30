@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import {
@@ -5,6 +6,7 @@ import {
   DashboardBarRow,
   DashboardEmptyState,
   DashboardFilterBar,
+  DashboardFilterPill,
   DashboardHeader,
   DashboardMetaPill,
   DashboardMiniStat,
@@ -17,11 +19,14 @@ import {
   formatNumber,
   formatPercent,
 } from '@/components/dashboard/DashboardPrimitives'
+import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
 import FootprintChart from '@/components/dashboard/FootprintChart'
+import { AnimatedSection } from '@/components/dashboard/AnimatedSection'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import { getSectionAvailability } from '@/lib/reports/report-availability'
 import {
   Droplets,
@@ -31,16 +36,21 @@ import {
 } from 'lucide-react'
 
 interface FootprintPageProps {
-  searchParams?: Promise<{ reportId?: string }>
+  searchParams?: Promise<{ reportId?: string; model?: string }>
 }
 
 export default async function FootprintPage({ searchParams }: FootprintPageProps) {
-  const requestedReportId = (await searchParams)?.reportId ?? null
+  const params = await searchParams
+  const requestedReportId = params?.reportId ?? null
+  const modelFilter = params?.model ?? 'all'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -50,23 +60,28 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
   const footprint = report.footprint_detail
   // Synthesis writes carbon_by_model (array of {model, carbonKg, percentage})
   const byModel: { model: string; carbonKg: number; percentage: number }[] = footprint?.carbon_by_model ?? []
+  const filteredByModel = modelFilter === 'all' ? byModel : byModel.filter((m) => m.model === modelFilter)
   const chartData = byModel.map(m => ({ model: m.model, carbon_kg: m.carbonKg }))
-  const totalCarbonKg = footprint?.total_carbon_kg ?? report.carbon_kg ?? null
+  const portfolioCarbonKg = footprint?.total_carbon_kg ?? report.carbon_kg ?? null
+  const selectedModel = modelFilter !== 'all' ? byModel.find((m) => m.model === modelFilter) ?? null : null
+  const totalCarbonKg = selectedModel?.carbonKg ?? portfolioCarbonKg
   const totalWaterLiters = footprint?.total_water_liters ?? report.water_liters ?? null
   const alternativeCarbonKg = footprint?.alternative_carbon_kg ?? null
   const savingsKg = footprint?.carbon_savings_kg ?? (
-    totalCarbonKg != null && alternativeCarbonKg != null
-      ? Math.max(0, totalCarbonKg - alternativeCarbonKg)
+    portfolioCarbonKg != null && alternativeCarbonKg != null
+      ? Math.max(0, portfolioCarbonKg - alternativeCarbonKg)
       : null
   )
   const waterSavingsLiters = footprint?.water_savings_liters ?? null
   const waterBottles = footprint?.water_bottles ?? (
     totalWaterLiters != null ? Math.round(totalWaterLiters / 0.519) : null
   )
-  const reductionRate = totalCarbonKg != null && savingsKg != null && totalCarbonKg > 0
-    ? (savingsKg / totalCarbonKg) * 100
+  const reductionRate = portfolioCarbonKg != null && savingsKg != null && portfolioCarbonKg > 0
+    ? (savingsKg / portfolioCarbonKg) * 100
     : null
   const topEmitter = [...byModel].sort((a, b) => b.carbonKg - a.carbonKg)[0] ?? null
+  // When a model is selected, treat it as the "focus emitter" for stat displays
+  const focusEmitter = selectedModel ?? topEmitter
   const waterSavingsBottles = waterSavingsLiters != null ? Math.round(waterSavingsLiters / 0.519) : null
   const carbonConfidence = footprint?.data_freshness?.latest_complete_day ?? footprint?.data_freshness?.coverage_end ?? null
 
@@ -76,18 +91,33 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
         <DashboardHeader
           title="Carbon and water footprint"
           subtitle={`${company!.name} · ${report.reporting_period}. Understand where AI emissions are concentrated and what reductions are realistically available.`}
-          badge={<DashboardMetaPill>{byModel.length > 0 ? `${byModel.length} emitting models tracked` : 'Awaiting footprint detail'}</DashboardMetaPill>}
+          badge={<DashboardMetaPill>{filteredByModel.length > 0 ? `${filteredByModel.length} emitting models tracked` : 'Awaiting footprint detail'}</DashboardMetaPill>}
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
 
-        <DashboardFilterBar
-          items={[
-            { label: 'Page', value: 'Carbon & Water' },
-            { label: 'Primary Signal', value: topEmitter ? topEmitter.model : 'Footprint Overview' },
-            { label: 'Scenario', value: alternativeCarbonKg != null ? 'Actual vs Optimized' : 'Actual Only' },
-            { label: 'Time Period', value: report.reporting_period },
-          ]}
-        />
+        <Suspense>
+          <DashboardFilterBar>
+            <DashboardFilterSelect
+              label="Model"
+              paramKey="model"
+              value={modelFilter}
+              options={[
+                { label: 'All Models', value: 'all' },
+                ...byModel.sort((a, b) => b.carbonKg - a.carbonKg).map((m) => ({ label: m.model, value: m.model })),
+              ]}
+            />
+            <DashboardFilterSelect
+              label="Period"
+              paramKey="reportId"
+              value={requestedReportId ?? 'all'}
+              options={[
+                { label: `${report.reporting_period} (latest)`, value: 'all' },
+                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+              ]}
+            />
+            <DashboardFilterPill label="Scenario" value={alternativeCarbonKg != null ? 'Actual vs Optimized' : 'Actual Only'} />
+          </DashboardFilterBar>
+        </Suspense>
 
         {!carbonWaterAvailable && (
           <SectionAvailabilityNotice
@@ -96,15 +126,16 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
           />
         )}
 
+        <AnimatedSection animKey={modelFilter}>
         <DashboardStatGrid>
           <DashboardStatCard
             label="Total Carbon"
             value={totalCarbonKg != null ? formatNumber(totalCarbonKg, totalCarbonKg < 100 ? 1 : 0) : '—'}
             unit="kg CO2e this period"
-            helper="Measured AI emissions"
+            helper={selectedModel ? `${selectedModel.model} emissions` : 'Measured AI emissions'}
             icon={<Leaf className="h-4 w-4" />}
-            statusLabel={topEmitter ? `${topEmitter.model} leads emissions` : 'Awaiting model detail'}
-            statusTone={topEmitter && topEmitter.percentage > 50 ? 'warning' : 'good'}
+            statusLabel={selectedModel ? `${formatPercent(selectedModel.percentage, 0)} of portfolio` : topEmitter ? `${topEmitter.model} leads emissions` : 'Awaiting model detail'}
+            statusTone={selectedModel ? (selectedModel.percentage > 50 ? 'warning' : 'good') : topEmitter && topEmitter.percentage > 50 ? 'warning' : 'good'}
           />
           <DashboardStatCard
             label="Water Usage"
@@ -133,6 +164,7 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
             statusTone={waterSavingsLiters != null && waterSavingsLiters > 0 ? 'good' : 'neutral'}
           />
         </DashboardStatGrid>
+        </AnimatedSection>
 
         {totalCarbonKg == null && totalWaterLiters == null ? (
           <DashboardEmptyState
@@ -145,29 +177,36 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
               <DashboardPanel
                 title="Carbon by model"
                 subtitle="Model-level emissions concentration for the current reporting window."
-                badge={<DashboardMetaPill>{topEmitter ? `${topEmitter.model} is the top emitter` : 'Model detail pending'}</DashboardMetaPill>}
+                badge={<DashboardMetaPill>{focusEmitter ? `${focusEmitter.model} is the top emitter` : 'Model detail pending'}</DashboardMetaPill>}
+                fillHeight
               >
                 {chartData.length > 0 ? (
                   <>
-                    <FootprintChart data={chartData} />
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-0">
+                        <FootprintChart data={chartData} selectedModel={modelFilter === 'all' ? null : modelFilter} />
+                      </div>
+                    </div>
+                    <AnimatedSection animKey={modelFilter} className="mt-4">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <DashboardMiniStat
-                        label="Top emitter"
-                        value={topEmitter ? topEmitter.model : '—'}
-                        hint={topEmitter ? `${topEmitter.carbonKg.toFixed(2)} kg CO2e` : 'Awaiting model ranking'}
-                        tone={topEmitter && topEmitter.percentage > 50 ? 'warning' : 'default'}
+                        label={selectedModel ? 'Selected model' : 'Top emitter'}
+                        value={focusEmitter ? focusEmitter.model : '—'}
+                        hint={focusEmitter ? `${focusEmitter.carbonKg.toFixed(2)} kg CO2e` : 'Awaiting model ranking'}
+                        tone={focusEmitter && focusEmitter.percentage > 50 ? 'warning' : 'default'}
                       />
                       <DashboardMiniStat
-                        label="Portfolio concentration"
-                        value={topEmitter ? formatPercent(topEmitter.percentage, 0) : '—'}
-                        hint="Share held by the highest-emitting model."
+                        label={selectedModel ? 'Share of portfolio' : 'Portfolio concentration'}
+                        value={focusEmitter ? formatPercent(focusEmitter.percentage, 0) : '—'}
+                        hint={selectedModel ? `${focusEmitter?.model} carbon share.` : 'Share held by the highest-emitting model.'}
                       />
                       <DashboardMiniStat
                         label="Models contributing"
-                        value={formatNumber(byModel.length, 0)}
+                        value={formatNumber(filteredByModel.length, 0)}
                         hint="Tracked in the footprint breakdown."
                       />
                     </div>
+                    </AnimatedSection>
                   </>
                 ) : (
                   <DashboardEmptyState
@@ -288,12 +327,12 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
             <DashboardPanel
               title="Model emission breakdown"
               subtitle="Detailed view of how each model contributes to the total footprint."
-              badge={<DashboardMetaPill>{byModel.length > 0 ? `${byModel.length} rows` : 'No rows yet'}</DashboardMetaPill>}
+              badge={<DashboardMetaPill>{filteredByModel.length > 0 ? `${filteredByModel.length} rows` : 'No rows yet'}</DashboardMetaPill>}
             >
-              {byModel.length > 0 ? (
+              {filteredByModel.length > 0 ? (
                 <DashboardTable
                   headers={['Model', 'Carbon', 'Share', 'Interpretation']}
-                  rows={byModel
+                  rows={filteredByModel
                     .sort((a, b) => b.carbonKg - a.carbonKg)
                     .map((model) => [
                       <span key={`${model.model}-name`} className="font-medium text-[#152820]">{model.model}</span>,

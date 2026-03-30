@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import {
@@ -5,6 +6,7 @@ import {
   DashboardBarRow,
   DashboardEmptyState,
   DashboardFilterBar,
+  DashboardFilterPill,
   DashboardHeader,
   DashboardMetaPill,
   DashboardMiniStat,
@@ -18,9 +20,11 @@ import {
   formatPercent,
   parseCurrencyString,
 } from '@/components/dashboard/DashboardPrimitives'
+import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
 import IncentiveCard from '@/components/dashboard/IncentiveCard'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
 import {
   AlertTriangle,
@@ -29,8 +33,15 @@ import {
   Globe,
 } from 'lucide-react'
 
+const URGENCY_OPTIONS = [
+  { label: 'All Incentives', value: 'all' },
+  { label: 'High urgency', value: 'High' },
+  { label: 'Medium urgency', value: 'Medium' },
+  { label: 'Watchlist only', value: 'Watchlist' },
+]
+
 interface IncentivesPageProps {
-  searchParams?: Promise<{ reportId?: string }>
+  searchParams?: Promise<{ reportId?: string; urgency?: string }>
 }
 
 function categorizeIncentive(title: string, description: string, actionRequired?: string) {
@@ -52,46 +63,62 @@ function categorizeUrgency(actionRequired?: string, description?: string) {
 }
 
 export default async function IncentivesPage({ searchParams }: IncentivesPageProps) {
-  const requestedReportId = (await searchParams)?.reportId ?? null
+  const params = await searchParams
+  const requestedReportId = params?.reportId ?? null
+  const urgencyFilter = params?.urgency ?? 'all'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
 
-  const incentives: { title: string; description: string; region: string; estimated_value: string; action_required?: string }[] =
+  const incentives: { title: string; description: string; region: string; estimated_value?: string; estimatedValue?: string; action_required?: string; actionRequired?: string }[] =
     report.incentives_and_benefits?.incentives ?? []
   const note = report.incentives_and_benefits?.note ?? 'Verify current terms with the relevant regulatory body before actioning any incentive.'
   const enrichedIncentives = incentives.map((incentive) => {
-    const parsedValue = parseCurrencyString(incentive.estimated_value)
+    // Handle both camelCase (AI output) and snake_case (legacy) field names
+    const actionRequired = incentive.action_required ?? incentive.actionRequired
+    const estimatedValue = incentive.estimated_value ?? incentive.estimatedValue
+    const parsedValue = parseCurrencyString(estimatedValue)
     return {
       ...incentive,
-      category: categorizeIncentive(incentive.title, incentive.description, incentive.action_required),
-      urgency: categorizeUrgency(incentive.action_required, incentive.description),
+      actionRequired,
+      estimatedValue,
+      category: categorizeIncentive(incentive.title, incentive.description, actionRequired),
+      urgency: categorizeUrgency(actionRequired, incentive.description),
       parsedValue,
     }
   })
-  const regionSummary = Object.entries(enrichedIncentives.reduce((acc, incentive) => {
+
+  // Apply urgency filter before computing all stats so every number reflects the selected filter
+  const filteredIncentives = urgencyFilter === 'all'
+    ? enrichedIncentives
+    : enrichedIncentives.filter((item) => item.urgency === urgencyFilter)
+
+  const regionSummary = Object.entries(filteredIncentives.reduce((acc, incentive) => {
     const key = incentive.region || 'Unspecified'
     acc[key] = (acc[key] ?? 0) + 1
     return acc
   }, {} as Record<string, number>))
-    .map(([region, count]) => ({ region, count, share: incentives.length > 0 ? (count / incentives.length) * 100 : 0 }))
+    .map(([region, count]) => ({ region, count, share: filteredIncentives.length > 0 ? (count / filteredIncentives.length) * 100 : 0 }))
     .sort((a, b) => b.count - a.count)
-  const actionRequiredCount = enrichedIncentives.filter((item) => Boolean(item.action_required)).length
-  const modeledValue = enrichedIncentives.reduce((sum, incentive) => sum + (incentive.parsedValue ?? 0), 0)
-  const modeledValueCount = enrichedIncentives.filter((item) => item.parsedValue != null).length
-  const valueCoverage = incentives.length > 0 ? (modeledValueCount / incentives.length) * 100 : 0
-  const categoryCounts = enrichedIncentives.reduce((acc, incentive) => {
+  const actionRequiredCount = filteredIncentives.filter((item) => Boolean(item.actionRequired)).length
+  const modeledValue = filteredIncentives.reduce((sum, incentive) => sum + (incentive.parsedValue ?? 0), 0)
+  const modeledValueCount = filteredIncentives.filter((item) => item.parsedValue != null).length
+  const valueCoverage = filteredIncentives.length > 0 ? (modeledValueCount / filteredIncentives.length) * 100 : 0
+  const categoryCounts = filteredIncentives.reduce((acc, incentive) => {
     acc[incentive.category] = (acc[incentive.category] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
   const urgencyLanes = ['High', 'Medium', 'Watchlist'].map((lane) => ({
     lane,
-    items: enrichedIncentives.filter((item) => item.urgency === lane),
+    items: filteredIncentives.filter((item) => item.urgency === lane),
   }))
 
   return (
@@ -104,14 +131,25 @@ export default async function IncentivesPage({ searchParams }: IncentivesPagePro
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
 
-        <DashboardFilterBar
-          items={[
-            { label: 'Page', value: 'Incentives' },
-            { label: 'Coverage', value: regionSummary.length > 0 ? `${regionSummary.length} regions` : 'Profile incomplete' },
-            { label: 'Focus', value: actionRequiredCount > 0 ? 'Action Required' : 'Opportunity Scan' },
-            { label: 'Time Period', value: report.reporting_period },
-          ]}
-        />
+        <Suspense>
+          <DashboardFilterBar>
+            <DashboardFilterSelect
+              label="Urgency"
+              paramKey="urgency"
+              value={urgencyFilter}
+              options={URGENCY_OPTIONS}
+            />
+            <DashboardFilterSelect
+              label="Period"
+              paramKey="reportId"
+              value={requestedReportId ?? 'all'}
+              options={[
+                { label: `${report.reporting_period} (latest)`, value: 'all' },
+                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+              ]}
+            />
+          </DashboardFilterBar>
+        </Suspense>
 
         {incentives.length === 0 ? (
           <DashboardEmptyState
@@ -123,8 +161,8 @@ export default async function IncentivesPage({ searchParams }: IncentivesPagePro
             <DashboardStatGrid>
               <DashboardStatCard
                 label="Opportunities"
-                value={formatNumber(incentives.length, 0)}
-                unit="matched incentives"
+                value={formatNumber(filteredIncentives.length, 0)}
+                unit={urgencyFilter === 'all' ? 'matched incentives' : `${urgencyFilter.toLowerCase()} urgency`}
                 helper="Combined financial and regulatory items"
                 icon={<BadgeDollarSign className="h-4 w-4" />}
                 statusLabel={`${formatNumber(categoryCounts.Financial ?? 0, 0)} financial programs`}
@@ -236,14 +274,14 @@ export default async function IncentivesPage({ searchParams }: IncentivesPagePro
                   {note}
                 </div>
                 <div className="mt-4 space-y-3">
-                  {enrichedIncentives.filter((item) => item.action_required).map((item) => (
+                  {filteredIncentives.filter((item) => item.actionRequired).map((item) => (
                     <DashboardBarRow
                       key={`${item.title}-action`}
                       label={item.title}
                       value={item.urgency}
                       percentage={item.urgency === 'High' ? 100 : item.urgency === 'Medium' ? 60 : 30}
                       tone={item.urgency === 'High' ? 'amber' : item.urgency === 'Medium' ? 'green' : 'slate'}
-                      hint={item.action_required}
+                      hint={item.actionRequired}
                     />
                   ))}
                   {actionRequiredCount === 0 && (
@@ -262,13 +300,13 @@ export default async function IncentivesPage({ searchParams }: IncentivesPagePro
               >
                 <DashboardTable
                   headers={['Title', 'Category', 'Region', 'Value', 'Urgency']}
-                  rows={enrichedIncentives.map((item) => [
+                  rows={filteredIncentives.map((item) => [
                     <span key={`${item.title}-title`} className="font-medium text-[#152820]">{item.title}</span>,
                     <DashboardBadge key={`${item.title}-category`} tone={item.category === 'Regulatory' ? 'amber' : item.category === 'Financial' ? 'green' : 'blue'}>
                       {item.category}
                     </DashboardBadge>,
                     <span key={`${item.title}-region`} className="text-[#60726b]">{item.region}</span>,
-                    <span key={`${item.title}-value`} className="text-[#60726b]">{item.estimated_value}</span>,
+                    <span key={`${item.title}-value`} className="text-[#60726b]">{item.estimatedValue}</span>,
                     <DashboardBadge key={`${item.title}-urgency`} tone={item.urgency === 'High' ? 'amber' : item.urgency === 'Medium' ? 'blue' : 'slate'}>
                       {item.urgency}
                     </DashboardBadge>,
@@ -280,25 +318,32 @@ export default async function IncentivesPage({ searchParams }: IncentivesPagePro
             <DashboardPanel
               title="Incentive board"
               subtitle="Detailed cards grouped by region so finance, legal, and sustainability teams can review what is relevant to them."
-              badge={<DashboardBadge tone="green">Execution-ready list</DashboardBadge>}
+              badge={<DashboardBadge tone="green">{filteredIncentives.length} showing</DashboardBadge>}
             >
-              <div className="space-y-6">
-                {regionSummary.map((region) => (
-                  <div key={region.region}>
-                    <div className="mb-3 flex items-center gap-3">
-                      <h3 className="font-medium text-[#152820]">{region.region}</h3>
-                      <DashboardBadge tone="slate">{region.count}</DashboardBadge>
+              {filteredIncentives.length === 0 ? (
+                <DashboardEmptyState
+                  title="No incentives match this filter"
+                  message="Try a different urgency level to see more opportunities."
+                />
+              ) : (
+                <div className="space-y-6">
+                  {regionSummary.map((region) => (
+                    <div key={region.region}>
+                      <div className="mb-3 flex items-center gap-3">
+                        <h3 className="font-medium text-[#152820]">{region.region}</h3>
+                        <DashboardBadge tone="slate">{region.count}</DashboardBadge>
+                      </div>
+                      <div className="space-y-3">
+                        {filteredIncentives
+                          .filter((item) => item.region === region.region)
+                          .map((incentive, index) => (
+                            <IncentiveCard key={`${region.region}-${index}`} {...incentive} />
+                          ))}
+                      </div>
                     </div>
-                    <div className="space-y-3">
-                      {enrichedIncentives
-                        .filter((item) => item.region === region.region)
-                        .map((incentive, index) => (
-                          <IncentiveCard key={`${region.region}-${index}`} {...incentive} />
-                        ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </DashboardPanel>
           </>
         )}

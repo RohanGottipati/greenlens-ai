@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import {
   CheckCircle2,
-  ChevronDown,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react'
@@ -99,24 +98,10 @@ export function DashboardMetaPill({ children }: { children: ReactNode }) {
   )
 }
 
-export function DashboardFilterBar({
-  items,
-  actionLabel = 'Apply Filter',
-}: {
-  items: Array<{ label: string; value: string }>
-  actionLabel?: string
-}) {
+export function DashboardFilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="grid gap-3 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-      {items.map((item) => (
-        <DashboardFilterPill key={item.label} label={item.label} value={item.value} />
-      ))}
-      <button
-        type="button"
-        className="inline-flex items-center justify-center rounded-2xl bg-[#3ac56d] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(58,197,109,0.28)] transition hover:bg-[#35b964]"
-      >
-        {actionLabel}
-      </button>
+    <div className="flex flex-wrap gap-3">
+      {children}
     </div>
   )
 }
@@ -129,11 +114,10 @@ export function DashboardFilterPill({
   value: string
 }) {
   return (
-    <div className="rounded-2xl border border-[#eef1ee] bg-white px-4 py-3 shadow-[0_4px_14px_rgba(16,38,29,0.04)]">
+    <div className="flex-1 basis-40 rounded-2xl border border-[#eef1ee] bg-white px-4 py-3 shadow-[0_4px_14px_rgba(16,38,29,0.04)]">
       <p className="text-[10px] uppercase tracking-[0.18em] text-[#99a69f]">{label}</p>
-      <div className="mt-1 flex items-center justify-between gap-3">
+      <div className="mt-1">
         <span className="truncate text-sm font-medium text-[#1b2b23]">{value}</span>
-        <ChevronDown className="h-4 w-4 text-[#8fa098]" />
       </div>
     </div>
   )
@@ -222,15 +206,17 @@ export function DashboardPanel({
   children,
   badge,
   className,
+  fillHeight = false,
 }: {
   title: string
   subtitle?: string
   children: ReactNode
   badge?: ReactNode
   className?: string
+  fillHeight?: boolean
 }) {
   return (
-    <section className={cx('rounded-[20px] border border-[#eff2ef] bg-white p-5 shadow-[0_8px_26px_rgba(16,38,29,0.05)]', className)}>
+    <section className={cx('rounded-[20px] border border-[#eff2ef] bg-white p-5 shadow-[0_8px_26px_rgba(16,38,29,0.05)]', fillHeight && 'flex flex-col', className)}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-[#152820]">{title}</h2>
@@ -238,7 +224,7 @@ export function DashboardPanel({
         </div>
         {badge}
       </div>
-      <div className="mt-4">{children}</div>
+      <div className={cx('mt-4', fillHeight && 'flex-1 flex flex-col')}>{children}</div>
     </section>
   )
 }
