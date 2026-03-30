@@ -1,5 +1,4 @@
 import { createClient } from '@/lib/supabase/server'
-export const dynamic = 'force-dynamic'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import OverviewDashboard from '@/components/dashboard/OverviewDashboard'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
@@ -9,6 +8,8 @@ import {
   getReportFreshness,
   getSectionAvailability,
 } from '@/lib/reports/report-availability'
+
+export const dynamic = 'force-dynamic'
 
 interface DashboardPageProps {
   searchParams?: Promise<{ reportId?: string }>
