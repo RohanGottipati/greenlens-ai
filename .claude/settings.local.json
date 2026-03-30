@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head -3 \"C:/Users/david/OneDrive/Desktop/Greenlens-ai/src/app/\\(auth\\)/signup/page.tsx\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(find /c/Users/david/OneDrive/Desktop/Greenlens-ai/src -type f \\\\\\(-name *esg* -o -name *export* -o -name *report* -o -name *pdf* -o -name *screenshot* \\\\\\))",
+      "Bash(npx tsc:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}
