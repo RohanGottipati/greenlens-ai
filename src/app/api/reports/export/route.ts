@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import React from 'react'
 import {
   Document, Page, Text, View, StyleSheet, renderToBuffer,
-  Svg, Path, Line, G, Circle,
+  Svg, Path, Line, G, Circle, Rect,
 } from '@react-pdf/renderer'
 import { createClient } from '@/lib/supabase/server'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
@@ -504,6 +504,11 @@ function delta(current: number | null, previous: number | null): string {
   return `${sign}${diff.toFixed(1)}% vs prior period`
 }
 
+function normalizeProviderName(name: string): string {
+  if (/copilot/i.test(name)) return 'OpenAI Tokens'
+  return name
+}
+
 // ─── PDF Document ────────────────────────────────────────────────────────────
 
 function EsgPDF({
@@ -670,7 +675,7 @@ function EsgPDF({
         ),
         React.createElement(View, { style: styles.statRow },
           React.createElement(View, { style: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 6, padding: 14 } },
-            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: GREEN_LIGHT, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 } }, 'AI Carbon Footprint'),
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: GREEN_LIGHT, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 } }, 'AI Carbon Usage'),
             React.createElement(Text, { style: { fontSize: 22, fontFamily: 'Helvetica-Bold', color: WHITE } }, carbonKg != null ? fmt(carbonKg) : '—'),
             React.createElement(Text, { style: { fontSize: 8, color: 'rgba(255,255,255,0.5)' } }, 'kg CO₂e'),
           ),
@@ -748,10 +753,59 @@ function EsgPDF({
 
   const execNarrativeText = geminiNarrative ||
     narrative ||
-    `The measurement of artificial intelligence's environmental footprint has moved from academic curiosity to board-level imperative over the course of 2024–2026. For ${companyName}, the data captured during ${reportingPeriod} represents the organisation's first objective, provider-agnostic view of its AI-driven carbon and water consumption: a baseline that will define both the trajectory of future reductions and the organisation's credibility with regulators, investors, and procurement partners.\n\nThe headline figures demand attention. AI systems consumed ${carbonKg != null ? `${fmt(carbonKg)} kg of CO₂e` : 'a measurable quantity of carbon'} and ${waterLiters != null ? `${fmt(waterLiters)} litres of water` : 'significant water resources'} during the reporting period. These are not abstract environmental statistics; they represent direct operational costs, regulatory exposure under frameworks such as the EU Corporate Sustainability Reporting Directive (CSRD) and the SEC's climate disclosure rules, and a clear signal to institutional investors who now screen AI infrastructure sustainability as part of ESG due diligence. Organisations that cannot quantify their AI footprint face an escalating disadvantage in capital markets, government procurement, and talent attraction.\n\nThe model efficiency score of ${effScore != null ? `${fmt(effScore)}/100` : 'the current period'} and licence utilisation rate of ${utilRate != null ? `${pct(utilRate)}` : 'the measured period'} together reveal the financial opportunity embedded in this data. Frontier models (those at the cutting edge of capability) carry an energy and cost premium that is only justified when the task genuinely requires them. When high-powered models are routinely deployed for low-complexity tasks, the result is a compounding inefficiency: higher costs, greater carbon output, and an inflated environmental profile at precisely the moment regulators are scrutinising such metrics most closely.`
+    `The chart above compares ${companyName}'s AI carbon usage (${carbonKg != null ? `${fmt(carbonKg)} kg CO₂e` : 'current period'}) and water usage (${waterLiters != null ? `${fmt(waterLiters)} litres` : 'current period'}) against the prior period. ${prevCarbon != null && carbonKg != null && carbonKg < prevCarbon ? 'Carbon usage has decreased period-on-period, indicating progress.' : prevCarbon != null && carbonKg != null ? 'Carbon usage has increased, requiring attention.' : 'Establishing this baseline enables future trend tracking.'}\n\nSuggestion: Prioritise task-appropriate model selection to reduce frontier model overuse (efficiency score: ${effScore != null ? `${fmt(effScore)}/100` : 'measured'}, licence utilisation: ${utilRate != null ? pct(utilRate) : 'measured'}). Shifting routine tasks to efficient-tier models can cut carbon output 20–40% with no capability loss.`
 
   const globalNarrativeText = geminiGlobal ||
-    `The global regulatory landscape is shifting with unusual speed. The EU's Corporate Sustainability Reporting Directive entered mandatory compliance for large undertakings in financial year 2024 and cascades to mid-market companies through 2026–2027. Under CSRD, a company's double-materiality assessment must address how its operations affect climate and how climate-related factors affect the organisation's financial position. AI-related energy and water consumption fall squarely within this scope. The penalty regime is not symbolic: member states are required to enforce fines of up to €10 million or 2.5% of worldwide annual turnover for material non-compliance, whichever is higher. For any organisation with European operations or revenues, the cost of non-measurement now exceeds the cost of measurement by an order of magnitude.\n\nBeyond compliance, the financial incentives for demonstrable AI sustainability are substantial and growing. The United States Inflation Reduction Act provides a 30% investment tax credit for qualifying clean-technology infrastructure. The UK's HMRC R&D tax relief scheme offers SMEs up to 33 pence of relief per pound of qualifying expenditure, with AI efficiency and green-tech projects increasingly qualifying under updated HMRC guidance. Singapore's Enterprise Development Grant and Green Lane programme support sustainable technology adoption with co-funding of up to 70% of eligible project costs. Japan's ¥2 trillion Green Innovation Fund and Germany's KfW sustainability grants offer parallel opportunities for organisations with operations in those jurisdictions. The data captured by GreenLens AI is precisely the audit-trail evidence required to substantiate claims under all of these schemes.`
+    `Global regulators now mandate AI environmental disclosure. The table below summarises the key frameworks — including penalties for non-compliance and financial incentives available to organisations with documented sustainability data.`
+
+  const CarbonWaterComparisonChart = () => {
+    const barW = (val: number | null, scale: number) => val != null ? Math.max(2, (val / scale) * 280) : 2
+    const carbonScale = Math.max(carbonKg ?? 1, prevCarbon ?? 1, 1)
+    const waterScale = Math.max((waterLiters ?? 1) / 1000, (prevWater ?? 1) / 1000, 1)
+    return React.createElement(View, { style: { marginBottom: 12 } },
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4 } }, 'Period-on-Period Comparison'),
+      React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+        { width: 460, height: 90, viewBox: '0 0 460 90' },
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+          { x: 0, y: 0, width: 460, height: 90, fill: BG_CARD }
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: 8, y: 16, fontSize: 7, fill: MUTED }, 'CARBON (kg CO₂e)'
+        ),
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+          { x: 8, y: 20, width: barW(carbonKg, carbonScale), height: 10, fill: GREEN, rx: 2 }
+        ),
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+          { x: 8, y: 32, width: barW(prevCarbon, carbonScale), height: 10, fill: RULE_COLOR, rx: 2 }
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: barW(carbonKg, carbonScale) + 12, y: 29, fontSize: 7, fill: GREEN },
+          carbonKg != null ? `${fmt(carbonKg)} kg  (current)` : '—'
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: barW(prevCarbon, carbonScale) + 12, y: 41, fontSize: 7, fill: MUTED },
+          prevCarbon != null ? `${fmt(prevCarbon)} kg  (prior)` : '—'
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: 8, y: 58, fontSize: 7, fill: MUTED }, 'WATER (litres)'
+        ),
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+          { x: 8, y: 62, width: barW(waterLiters != null ? waterLiters / 1000 : null, waterScale), height: 10, fill: GREEN_LIGHT, rx: 2 }
+        ),
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+          { x: 8, y: 74, width: barW(prevWater != null ? prevWater / 1000 : null, waterScale), height: 10, fill: RULE_COLOR, rx: 2 }
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: barW(waterLiters != null ? waterLiters / 1000 : null, waterScale) + 12, y: 71, fontSize: 7, fill: GREEN_LIGHT },
+          waterLiters != null ? `${fmt(waterLiters)} L  (current)` : '—'
+        ),
+        React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+          { x: barW(prevWater != null ? prevWater / 1000 : null, waterScale) + 12, y: 83, fontSize: 7, fill: MUTED },
+          prevWater != null ? `${fmt(prevWater)} L  (prior)` : '—'
+        ),
+      )
+    )
+  }
 
   const ExecSummaryPage1 = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
@@ -762,7 +816,7 @@ function EsgPDF({
       }),
       React.createElement(View, { style: styles.statRow },
         React.createElement(View, { style: styles.statCard },
-          React.createElement(Text, { style: styles.statLabel }, 'AI Carbon'),
+          React.createElement(Text, { style: styles.statLabel }, 'AI Carbon Usage'),
           React.createElement(Text, { style: styles.statValue }, carbonKg != null ? fmt(carbonKg) : '—'),
           React.createElement(Text, { style: styles.statUnit }, 'kg CO₂e'),
           prevCarbon != null && carbonKg != null
@@ -770,7 +824,7 @@ function EsgPDF({
             : null,
         ),
         React.createElement(View, { style: styles.statCard },
-          React.createElement(Text, { style: styles.statLabel }, 'AI Water'),
+          React.createElement(Text, { style: styles.statLabel }, 'AI Water Usage'),
           React.createElement(Text, { style: styles.statValue }, waterLiters != null ? fmt(waterLiters) : '—'),
           React.createElement(Text, { style: styles.statUnit }, 'litres'),
           prevWater != null && waterLiters != null
@@ -791,35 +845,61 @@ function EsgPDF({
           React.createElement(Text, { style: styles.statUnit }, 'of seats active'),
         ),
       ),
-      ...execNarrativeText.split('\n\n').filter(Boolean).map((para: string, i: number) =>
-        React.createElement(Text, { key: `exec-para-${i}`, style: styles.body }, para.trim())
+      React.createElement(CarbonWaterComparisonChart, null),
+      ...execNarrativeText.split('\n\n').filter(Boolean).slice(0, 2).map((para: string, i: number) =>
+        React.createElement(Text, { key: `exec-para-${i}`, style: styles.bodyMuted }, para.trim())
+      ),
+      React.createElement(View, { style: styles.itemCardAccent },
+        React.createElement(Text, { style: styles.itemSubtitle }, 'Key Suggestion'),
+        React.createElement(Text, { style: styles.itemBody },
+          `Shift routine AI tasks from frontier to efficient-tier models. This single action can reduce carbon output by 20–40% and lower licence costs without impacting capability.`
+        ),
       ),
       React.createElement(Footer, null),
     )
 
   const ExecSummaryPage2 = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
-      React.createElement(Subheading, null, 'Global Regulatory Context and Financial Opportunity'),
-      ...globalNarrativeText.split('\n\n').filter(Boolean).map((para: string, i: number) =>
-        React.createElement(Text, { key: `global-para-${i}`, style: styles.body }, para.trim())
+      React.createElement(Subheading, null, 'Rebates, Incentives & Compliance Penalties'),
+      React.createElement(Text, { style: styles.bodyMuted },
+        `Documented AI sustainability data unlocks financial incentives and ensures regulatory compliance. The table below summarises key frameworks and their financial impact.`
+      ),
+      React.createElement(View, { style: { ...styles.tableHeader, marginTop: 6 } },
+        React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 2 } }, 'Framework / Scheme'),
+        React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 1.5 } }, 'Jurisdiction'),
+        React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 2 } }, 'Value / Penalty'),
+      ),
+      ...[
+        { name: 'EU CSRD', jurisdiction: 'European Union', value: 'Penalty up to €10M / 2.5% turnover' },
+        { name: 'US Inflation Reduction Act', jurisdiction: 'United States', value: '30% Investment Tax Credit' },
+        { name: 'UK HMRC R&D Tax Relief', jurisdiction: 'United Kingdom', value: 'Up to 33% relief (SME)' },
+        { name: 'Singapore EDG / Green Lane', jurisdiction: 'Singapore', value: 'Up to 70% co-funding' },
+        { name: 'Germany KfW / France CIR', jurisdiction: 'EU Members', value: '25–50% project cost grants' },
+      ].map((row, i) =>
+        React.createElement(View, { key: `reg-${i}`, style: i % 2 === 0 ? styles.tableRow : styles.tableRowAlt },
+          React.createElement(Text, { style: { ...styles.tableCell, flex: 2 } }, row.name),
+          React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 1.5 } }, row.jurisdiction),
+          React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 2 } }, row.value),
+        )
       ),
       React.createElement(Subheading, null, 'Key Mitigation Strategies'),
-      React.createElement(Text, { style: styles.body },
-        `The following mitigation strategies have been identified based on ${companyName}'s specific usage profile and model mix. Each recommendation is grounded in the measured data and calibrated to deliver the maximum combination of environmental improvement, cost reduction, and regulatory readiness within a twelve-month horizon.`
-      ),
       ...(mitigations.length > 0
         ? mitigations.slice(0, 4).map((m: unknown, i: number) => {
             const mit = m as Json
             const title = str(mit.title ?? mit.strategy ?? mit.action ?? '')
-            const desc  = str(mit.description ?? mit.detail ?? mit.rationale ?? (typeof m === 'string' ? m : ''))
-            const text  = title && desc ? `${title}: ${desc}` : title || desc || str(m)
-            return React.createElement(View, { key: `mit-${i}`, style: styles.itemCard },
-              React.createElement(Text, { style: styles.itemBody }, text),
+            const timeline = str((mit.timeline ?? mit.timeframe ?? mit.period ?? '') as string)
+            return React.createElement(View, { key: `mit-${i}`, style: { ...styles.itemCard, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' } },
+              React.createElement(Text, { style: { ...styles.itemTitle, flex: 1 } }, title || str(m)),
+              timeline
+                ? React.createElement(View, { style: { ...styles.frameworkBadge, marginLeft: 8 } },
+                    React.createElement(Text, { style: styles.frameworkText }, timeline),
+                  )
+                : null,
             )
           })
         : [React.createElement(View, { key: 'mit-default', style: styles.itemCard },
             React.createElement(Text, { style: styles.itemBody },
-              'Prioritise task-appropriate model selection to reduce frontier model dependency for routine workflows. Implement quarterly licence audits to reclaim dormant seats before renewal. Engage with available national and international sustainability grant schemes using the data captured in this report as supporting evidence. Establish internal carbon budgets for AI workloads to drive team-level accountability.'
+              'Task-appropriate model selection · Quarterly licence audit · Sustainability grant applications · Internal AI carbon budgets'
             ),
           )]
       ),
@@ -855,8 +935,8 @@ function EsgPDF({
             ),
             ...inventory.slice(0, 10).map((m: unknown, i: number) => {
               const model = m as Json
-              const modelId = str(model.model ?? model.model_id ?? model.name ?? `Model ${i + 1}`)
-              const provider = str(model.provider ?? model.vendor ?? '')
+              const modelId = normalizeProviderName(str(model.model ?? model.model_id ?? model.name ?? `Model ${i + 1}`))
+              const provider = normalizeProviderName(str(model.provider ?? model.vendor ?? ''))
               return React.createElement(View, { key: `model-${i}`, style: i % 2 === 0 ? styles.tableRow : styles.tableRowAlt },
                 React.createElement(Text, { style: { ...styles.tableCell, flex: 3 } }, modelId),
                 React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 1 } }, provider || '—'),
@@ -875,12 +955,78 @@ function EsgPDF({
   // PAGE 6 — MODEL EFFICIENCY ANALYSIS
   // ════════════════════════════════════════════════════════════════════════════
 
+  const ModelEfficiencyChart = () => {
+    const scoreBarW = effScore != null ? Math.max(2, (effScore / 100) * 300) : 2
+    const benchmarkX = (75 / 100) * 300
+    const frontierBarW = frontierPct != null ? Math.max(2, (frontierPct / 100) * 300) : 2
+    const efficientBarW = frontierPct != null ? Math.max(2, ((100 - frontierPct) / 100) * 300) : 2
+    const mismatchBarW = mismatchRate != null ? Math.max(2, (mismatchRate / 100) * 300) : 2
+    const targetMismatchX = (10 / 100) * 300
+    return React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+      { width: 460, height: 130, viewBox: '0 0 460 130' },
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 0, y: 0, width: 460, height: 130, fill: BG_CARD }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 8, y: 16, fontSize: 7, fill: MUTED }, 'EFFICIENCY SCORE  (benchmark: 75/100)'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 20, width: 300, height: 12, fill: RULE_COLOR, rx: 3 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 20, width: scoreBarW, height: 12, fill: GREEN, rx: 3 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 8 + benchmarkX, y: 18, width: 2, height: 16, fill: DARK }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 318, y: 30, fontSize: 8, fill: GREEN },
+        effScore != null ? `${fmt(effScore)}/100` : '—'
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 8, y: 52, fontSize: 7, fill: MUTED }, 'MODEL MIX  (frontier vs efficient)'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 56, width: frontierBarW, height: 12, fill: '#c0392b', rx: 3 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8 + frontierBarW, y: 56, width: efficientBarW, height: 12, fill: GREEN_LIGHT, rx: 3 }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 318, y: 66, fontSize: 8, fill: MUTED },
+        frontierPct != null ? `${fmt(frontierPct, 1)}% frontier` : '—'
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 8, y: 86, fontSize: 7, fill: MUTED }, 'TASK MISMATCH RATE  (target: <10%)'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 90, width: 300, height: 12, fill: RULE_COLOR, rx: 3 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 90, width: mismatchBarW, height: 12, fill: '#e67e22', rx: 3 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 8 + targetMismatchX, y: 88, width: 2, height: 16, fill: DARK }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 318, y: 100, fontSize: 8, fill: MUTED },
+        mismatchRate != null ? `${fmt(mismatchRate, 1)}%` : '—'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 8, y: 116, width: 8, height: 8, fill: DARK }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 20, y: 123, fontSize: 6.5, fill: MUTED }, 'Benchmark / Target'
+      ),
+    )
+  }
+
   const ModelEfficiencyPage = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
       React.createElement(SectionHead, {
         num: '03',
         title: 'Model Efficiency Analysis',
-        lead: 'Scoring, frontier vs efficient model utilisation, task clustering, and mismatch analysis.',
+        lead: 'Efficiency scoring, model mix, and task-mismatch comparison.',
       }),
       React.createElement(View, { style: styles.statRow },
         React.createElement(View, { style: styles.statCard },
@@ -899,33 +1045,29 @@ function EsgPDF({
           React.createElement(Text, { style: styles.statUnit }, 'over-specified tasks'),
         ),
       ),
-      React.createElement(BodyText, null,
-        `The Model Efficiency Score of ${effScore != null ? `${fmt(effScore)} out of 100` : 'the current period'} is a composite measure that weights three factors: the proportion of tasks assigned to appropriately-capable models, the degree to which token consumption is concentrated in high-energy frontier models relative to the overall task complexity profile, and the rate at which licence seats translate into active, productive usage. A score above 75 is considered strong; below 60 indicates meaningful optimisation headroom that typically translates to both cost reduction and carbon savings without any reduction in AI capability for end users.`
+      React.createElement(ModelEfficiencyChart, null),
+      React.createElement(Text, { style: styles.bodyMuted },
+        `The chart compares the current efficiency score against the 75/100 benchmark, shows the frontier-to-efficient model mix, and highlights task mismatch rate against the <10% target.${effScore != null && effScore < 75 ? ' The score is below benchmark — shifting routine tasks to efficient models will close this gap.' : effScore != null ? ' The score meets or exceeds benchmark — maintain current model selection discipline.' : ''}`
       ),
-      React.createElement(BodyText, null,
-        `Frontier AI models, those at the leading edge of capability such as the most powerful reasoning and multimodal systems, carry a materially higher energy and financial cost per token than efficient-tier models optimised for lower-complexity tasks. When ${frontierPct != null ? `${fmt(frontierPct, 1)}%` : 'a significant share'} of usage volume flows through frontier models, the critical question is whether that capability premium is warranted. GreenLens AI's task clustering algorithm analyses patterns in usage timing, session length, and context-window utilisation to classify each cluster of activity as high-complexity (benefiting from frontier models), medium-complexity (suitable for efficient-tier), or low-complexity (appropriate for lightweight models). The mismatch rate of ${mismatchRate != null ? `${fmt(mismatchRate, 1)}%` : 'the measured period'} represents the share of usage where a frontier model was deployed for a task cluster that analysis suggests would have been served equally well by a less resource-intensive alternative.`
-      ),
-      React.createElement(BodyText, null,
-        `The financial and environmental implications of mismatch are not trivial. Frontier models typically consume three to eight times the energy per token of their efficient-tier counterparts, and carry a corresponding cost premium. Reducing the mismatch rate by even 10 percentage points (a readily achievable target through model selection policies and user guidance) can translate to measurable carbon reductions and licence cost savings. The mismatched usage clusters identified in this analysis are documented below and should be reviewed alongside the Strategic Decisions section of this report, where specific intervention recommendations are provided.`
+      React.createElement(View, { style: styles.itemCardAccent },
+        React.createElement(Text, { style: styles.itemSubtitle }, 'Impact & Suggestion'),
+        React.createElement(Text, { style: styles.itemBody },
+          `${mismatchRate != null && mismatchRate > 10 ? `${fmt(mismatchRate, 1)}% of tasks use over-specified models, inflating carbon and cost. ` : ''}Routing low-complexity tasks to efficient-tier models can improve the efficiency score by 10–25 points and reduce energy consumption proportionally.`
+        ),
       ),
       mismatchedClusters.length > 0
         ? React.createElement(View, null,
             React.createElement(Subheading, null, 'Mismatched Usage Clusters'),
             ...mismatchedClusters.slice(0, 4).map((c: unknown, i: number) => {
               const cluster = c as Json
-              return React.createElement(View, { key: `cluster-${i}`, style: styles.itemCard },
-                React.createElement(Text, { style: styles.itemTitle },
+              return React.createElement(View, { key: `cluster-${i}`, style: { ...styles.itemCard, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement(Text, { style: { ...styles.itemTitle, flex: 1, marginBottom: 0 } },
                   str(cluster.cluster_name ?? cluster.name ?? `Cluster ${i + 1}`)
                 ),
-                React.createElement(Text, { style: styles.itemBody },
-                  str(cluster.description ?? cluster.detail ?? cluster.summary ?? 'High-capability model deployed for routine task patterns.')
-                ),
+                React.createElement(Text, { style: styles.impactBadge }, 'Over-specified'),
               )
             }),
           )
-        : null,
-      str(taskClustering) && str(taskClustering) !== '[object Object]'
-        ? React.createElement(MethodBox, { label: 'Task Clustering Methodology', text: str(taskClustering) })
         : null,
       React.createElement(Footer, null),
     )
@@ -934,12 +1076,109 @@ function EsgPDF({
   // PAGE 7 — CARBON & WATER FOOTPRINT
   // ════════════════════════════════════════════════════════════════════════════
 
+  const FootprintComparisonChart = () => {
+    const carbonMax = Math.max(carbonKg ?? 0, prevCarbon ?? 0, altCarbon ?? 0, 1)
+    const waterMax = Math.max(waterLiters ?? 0, prevWater ?? 0, 1)
+    const BAR_AREA = 260
+    const cBar = (v: number | null) => v != null ? Math.max(2, (v / carbonMax) * BAR_AREA) : 2
+    const wBar = (v: number | null) => v != null ? Math.max(2, (v / waterMax) * BAR_AREA) : 2
+    const rows = altCarbon != null ? 3 : 2
+    const height = 16 + rows * 14 + 60
+    return React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+      { width: 460, height: height, viewBox: `0 0 460 ${height}` },
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 0, y: 0, width: 460, height: height, fill: BG_CARD }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 8, y: 14, fontSize: 7, fill: MUTED }, 'CARBON FOOTPRINT (kg CO₂e)'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 18, width: cBar(carbonKg), height: 11, fill: GREEN, rx: 2 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: 31, width: cBar(prevCarbon), height: 11, fill: RULE_COLOR, rx: 2 }
+      ),
+      altCarbon != null
+        ? React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+            { x: 8, y: 44, width: cBar(altCarbon), height: 11, fill: GREEN_LIGHT, rx: 2 }
+          )
+        : null,
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: cBar(carbonKg) + 12, y: 27, fontSize: 7, fill: GREEN },
+        carbonKg != null ? `${fmt(carbonKg)} kg  (current)` : '—'
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: cBar(prevCarbon) + 12, y: 40, fontSize: 7, fill: MUTED },
+        prevCarbon != null ? `${fmt(prevCarbon)} kg  (prior)` : '—'
+      ),
+      altCarbon != null
+        ? React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+            { x: cBar(altCarbon) + 12, y: 53, fontSize: 7, fill: GREEN_LIGHT },
+            `${fmt(altCarbon)} kg  (optimised potential)`
+          )
+        : null,
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: 8, y: height - 46, fontSize: 7, fill: MUTED }, 'WATER CONSUMPTION (litres)'
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: height - 42, width: wBar(waterLiters), height: 11, fill: GREEN_LIGHT, rx: 2 }
+      ),
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+        { x: 8, y: height - 29, width: wBar(prevWater), height: 11, fill: RULE_COLOR, rx: 2 }
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: wBar(waterLiters) + 12, y: height - 33, fontSize: 7, fill: GREEN_LIGHT },
+        waterLiters != null ? `${fmt(waterLiters)} L  (current)` : '—'
+      ),
+      React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+        { x: wBar(prevWater) + 12, y: height - 20, fontSize: 7, fill: MUTED },
+        prevWater != null ? `${fmt(prevWater)} L  (prior)` : '—'
+      ),
+    )
+  }
+
+  const CarbonByModelChart = () => {
+    const top6 = carbonByModel.slice(0, 6).map((m: unknown) => {
+      const entry = m as Json
+      const modelName = normalizeProviderName(str(entry.model ?? entry.model_id ?? entry.name ?? 'Unknown'))
+      const carbon = (entry.carbon_kg ?? entry.carbon) as number | null
+      return { modelName: modelName.length > 24 ? modelName.substring(0, 22) + '…' : modelName, carbon: carbon ?? 0 }
+    })
+    const maxCarbon = Math.max(...top6.map(m => m.carbon), 1)
+    const BAR_W = 260
+    const svgHeight = top6.length * 24 + 16
+    return React.createElement(View, { style: { marginBottom: 8 } },
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4 } }, 'Carbon by Model (kg CO₂e)'),
+      React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+        { width: 460, height: svgHeight, viewBox: `0 0 460 ${svgHeight}` },
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+          { x: 0, y: 0, width: 460, height: svgHeight, fill: BG_CARD }
+        ),
+        ...top6.flatMap(({ modelName, carbon }, i) => {
+          const bw = Math.max(4, (carbon / maxCarbon) * BAR_W)
+          const y = 10 + i * 24
+          return [
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `cm-lbl-${i}`, x: 8, y: y, fontSize: 7, fill: DARK }, modelName
+            ),
+            React.createElement(Rect as unknown as React.ComponentType<{ key?: string; x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+              { key: `cm-bar-${i}`, x: 8, y: y + 3, width: bw, height: 10, fill: i === 0 ? GREEN : GREEN_LIGHT, rx: 2 }
+            ),
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `cm-val-${i}`, x: bw + 14, y: y + 11, fontSize: 7, fill: MUTED }, `${fmt(carbon, 2)} kg`
+            ),
+          ]
+        }),
+      ),
+    )
+  }
+
   const FootprintPage = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
       React.createElement(SectionHead, {
         num: '04',
         title: 'Carbon & Water Footprint',
-        lead: 'Quantified environmental impact, period-on-period comparison, and savings potential.',
+        lead: 'Period-on-period comparison, per-model breakdown, and savings potential.',
       }),
       React.createElement(View, { style: styles.statRow },
         React.createElement(View, { style: styles.statCard },
@@ -967,56 +1206,35 @@ function EsgPDF({
           : null,
         carbonSavings != null
           ? React.createElement(View, { style: styles.statCardAlt },
-              React.createElement(Text, { style: styles.statLabel }, 'Carbon Savings Potential'),
+              React.createElement(Text, { style: styles.statLabel }, 'Savings Potential'),
               React.createElement(Text, { style: styles.statValueAlt }, fmt(carbonSavings)),
               React.createElement(Text, { style: styles.statUnit }, 'kg CO₂e reachable'),
             )
           : null,
       ),
-      React.createElement(BodyText, null,
-        `During ${reportingPeriod}, ${companyName}'s AI systems generated a total carbon footprint of ${carbonKg != null ? `${fmt(carbonKg)} kg CO₂e` : 'a quantified amount of carbon dioxide equivalent'} and consumed ${waterLiters != null ? `${fmt(waterLiters)} litres of water` : 'a measurable quantity of water'}. These figures encompass all AI inference activity across connected provider accounts and are derived using a methodology grounded in published energy intensity data for each model class, combined with regional grid carbon intensity factors for the data centre locations associated with each provider. The methodology is documented in full in the ESG Disclosure Statement and is aligned to GRI Standard 305 for Scope 3 emissions reporting.`
-      ),
-      React.createElement(BodyText, null,
-        `${prevCarbon != null && carbonKg != null
-          ? `Compared to the prior reporting period (${fmt(prevCarbon)} kg CO₂e), carbon consumption has ${carbonKg > prevCarbon ? 'increased' : 'decreased'} by ${Math.abs(((carbonKg - prevCarbon) / prevCarbon) * 100).toFixed(1)}%. `
-          : ''}${prevWater != null && waterLiters != null
-          ? `Water consumption ${waterLiters > prevWater ? 'increased' : 'decreased'} by ${Math.abs(((waterLiters - prevWater) / prevWater) * 100).toFixed(1)}% versus the prior period (${fmt(prevWater)} litres). `
-          : ''}These trend figures are the foundation of the year-on-year improvement trajectory that regulators, ESG rating agencies, and institutional investors expect organisations to demonstrate. A single data point is informative; a consistent downward trend is evidence of systematic management commitment.`
-      ),
-      carbonSavings != null || altCarbon != null
-        ? React.createElement(BodyText, null,
-            `The optimisation analysis embedded in this report identifies a potential carbon footprint of ${altCarbon != null ? `${fmt(altCarbon)} kg CO₂e` : 'materially lower levels'}, representing a reduction of ${carbonSavings != null ? `${fmt(carbonSavings)} kg CO₂e` : 'significant quantities'} achievable through task-appropriate model selection alone, without acquiring any new technology or reducing AI capability. ${waterSavings != null ? `A corresponding water saving of ${fmt(waterSavings)} litres is also achievable. ` : ''}This potential is documented as part of the science-based target-setting baseline that ${companyName} can present to the Science Based Targets initiative (SBTi) and to CDP for A-List consideration.`
-          )
-        : null,
-      React.createElement(BodyText, null,
-        `The carbon-by-model breakdown below illustrates how consumption is distributed across the model inventory. Concentration in a small number of high-emission frontier models is a common pattern and represents the primary lever available to operations teams seeking rapid, measurable reductions without disrupting end-user workflows.`
+      React.createElement(FootprintComparisonChart, null),
+      React.createElement(Text, { style: styles.bodyMuted },
+        `The chart compares current carbon and water usage against the prior period.${carbonSavings != null ? ` Optimising model selection could save ${fmt(carbonSavings)} kg CO₂e.` : ''}${prevCarbon != null && carbonKg != null && carbonKg < prevCarbon ? ' Carbon usage is trending downward — continue current optimisation efforts.' : prevCarbon != null && carbonKg != null ? ' Carbon usage increased — review frontier model allocation to reverse this trend.' : ''}`
       ),
       carbonByModel.length > 0
-        ? React.createElement(View, null,
-            React.createElement(Subheading, null, 'Carbon by Model'),
-            React.createElement(View, { style: styles.tableHeader },
-              React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 2 } }, 'Model'),
-              React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 1 } }, 'Carbon (kg CO₂e)'),
-              React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 1 } }, 'Share'),
-            ),
-            ...carbonByModel.slice(0, 8).map((m: unknown, i: number) => {
-              const entry = m as Json
-              const modelName = str(entry.model ?? entry.model_id ?? entry.name ?? `Model ${i + 1}`)
-              const carbon = (entry.carbon_kg ?? entry.carbon) as number | null
-              const share = (entry.share ?? entry.percentage) as number | null
-              return React.createElement(View, { key: `cbm-${i}`, style: i % 2 === 0 ? styles.tableRow : styles.tableRowAlt },
-                React.createElement(Text, { style: { ...styles.tableCell, flex: 2 } }, modelName),
-                React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 1 } }, carbon != null ? fmt(carbon, 2) : '—'),
-                React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 1 } }, share != null ? `${fmt(share, 1)}%` : '—'),
-              )
-            }),
+        ? React.createElement(CarbonByModelChart, null)
+        : null,
+      React.createElement(View, { style: styles.itemCardAccent },
+        React.createElement(Text, { style: styles.itemSubtitle }, 'Impact & Suggestion'),
+        React.createElement(Text, { style: styles.itemBody },
+          `${altCarbon != null && carbonKg != null ? `Switching to optimised model selection reduces carbon from ${fmt(carbonKg)} to ${fmt(altCarbon)} kg CO₂e. ` : ''}Prioritise high-carbon models for replacement with efficient alternatives to achieve the largest environmental and cost benefit.`
+        ),
+      ),
+      esgCarbonMethod || esgWaterMethod
+        ? React.createElement(View, { style: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: RULE_COLOR } },
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: MUTED, marginBottom: 2 } }, 'Methodology'),
+            esgCarbonMethod
+              ? React.createElement(Text, { style: { fontSize: 7, color: MUTED, lineHeight: 1.4 } }, `Carbon: ${esgCarbonMethod.substring(0, 200)}${esgCarbonMethod.length > 200 ? '…' : ''}`)
+              : null,
+            esgWaterMethod
+              ? React.createElement(Text, { style: { fontSize: 7, color: MUTED, lineHeight: 1.4, marginTop: 2 } }, `Water: ${esgWaterMethod.substring(0, 200)}${esgWaterMethod.length > 200 ? '…' : ''}`)
+              : null,
           )
-        : null,
-      esgCarbonMethod
-        ? React.createElement(MethodBox, { label: 'Carbon Methodology', text: esgCarbonMethod })
-        : null,
-      esgWaterMethod
-        ? React.createElement(MethodBox, { label: 'Water Methodology', text: esgWaterMethod })
         : null,
       React.createElement(Footer, null),
     )
@@ -1050,15 +1268,44 @@ function EsgPDF({
           React.createElement(Text, { style: styles.statValueAlt }, annualCost != null ? fmtCurrency(annualCost) : '—'),
         ),
       ),
-      React.createElement(BodyText, null,
-        `AI licence expenditure represents one of the fastest-growing categories of enterprise software spend. For ${companyName}, the data reveals ${totalSeats != null ? `${fmt(totalSeats)} licensed seats` : 'a significant number of licensed seats'} across connected providers, of which ${activeSeats != null ? `${fmt(activeSeats)} (${totalSeats != null && activeSeats != null ? pct((activeSeats / totalSeats) * 100) : 'the majority'})` : 'the active portion'} were used during the reporting period. The ${dormantSeats != null ? `${fmt(dormantSeats)} dormant seats` : 'dormant seats'} identified represent paid capacity generating no value. This pattern is commonplace in enterprise AI rollouts, where initial broad licensing is followed by uneven adoption across departments.`
+      React.createElement(Text, { style: styles.bodyMuted },
+        `${totalSeats != null ? `${fmt(totalSeats)} licensed seats` : 'Licensed seats'} across providers, ${activeSeats != null ? `${fmt(activeSeats)} active` : 'a portion active'}, ${dormantSeats != null ? `${fmt(dormantSeats)} dormant` : 'remainder dormant'}. Rationalising dormant seats at renewal saves ${annualSavings != null ? fmtCurrency(annualSavings) : 'a material amount'} annually. Utilisation data also separates licensed capacity from actual consumption for accurate ESG carbon attribution.`
       ),
-      React.createElement(BodyText, null,
-        `The estimated annual licence cost of ${annualCost != null ? fmtCurrency(annualCost) : 'the measured total'} provides the financial baseline against which the optimisation opportunity should be assessed. Rationalising dormant seats at renewal, rather than rolling them forward, creates an immediate annualised saving of ${annualSavings != null ? fmtCurrency(annualSavings) : 'a material amount'} at current provider pricing. This is not a one-time benefit: dormant seat rationalisation compounded with task-appropriate model selection typically yields cost reductions of 15–35% versus unmanaged AI spend, based on GreenLens AI's analysis across comparable organisations.`
-      ),
-      React.createElement(BodyText, null,
-        `From an ESG reporting perspective, licence utilisation data serves a secondary but important function: it enables the separation of licensed capacity from actual consumption in environmental calculations. An organisation that holds 500 seats but actively uses 200 should not be attributed the full environmental footprint of 500 users. This distinction is increasingly material as carbon accounting standards evolve and as Scope 3 AI emissions begin to feature in supply chain due diligence questionnaires from major enterprise customers.`
-      ),
+      annualCost != null
+        ? (() => {
+            const optimised = annualSavings != null ? annualCost - annualSavings : annualCost * 0.75
+            const maxCost = Math.max(annualCost, 1)
+            const BAR_W = 280
+            return React.createElement(View, { style: { marginBottom: 10 } },
+              React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4 } }, 'Licence Cost Savings Opportunity'),
+              React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+                { width: 460, height: 70, viewBox: '0 0 460 70' },
+                React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+                  { x: 0, y: 0, width: 460, height: 70, fill: BG_CARD }
+                ),
+                React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+                  { x: 8, y: 14, fontSize: 7, fill: MUTED }, 'CURRENT ANNUAL COST'
+                ),
+                React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+                  { x: 8, y: 18, width: Math.max(4, (annualCost / maxCost) * BAR_W), height: 12, fill: '#c0392b', rx: 2 }
+                ),
+                React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+                  { x: Math.max(4, (annualCost / maxCost) * BAR_W) + 14, y: 28, fontSize: 8, fill: DARK }, fmtCurrency(annualCost)
+                ),
+                React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+                  { x: 8, y: 46, fontSize: 7, fill: MUTED }, 'OPTIMISED COST (after rationalisation)'
+                ),
+                React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+                  { x: 8, y: 50, width: Math.max(4, (optimised / maxCost) * BAR_W), height: 12, fill: GREEN, rx: 2 }
+                ),
+                React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string }>,
+                  { x: Math.max(4, (optimised / maxCost) * BAR_W) + 14, y: 60, fontSize: 8, fill: GREEN },
+                  `${fmtCurrency(optimised)}  (save ${annualSavings != null ? fmtCurrency(annualSavings) : fmtCurrency(annualCost * 0.25)}/yr)`
+                ),
+              ),
+            )
+          })()
+        : null,
       providers.length > 0
         ? React.createElement(View, null,
             React.createElement(Subheading, null, 'Provider Breakdown'),
@@ -1072,7 +1319,7 @@ function EsgPDF({
             ),
             ...providers.slice(0, 8).map((p: unknown, i: number) => {
               const prov = p as Json
-              const pName = str(prov.provider ?? prov.name ?? `Provider ${i + 1}`)
+              const pName = normalizeProviderName(str(prov.provider ?? prov.name ?? `Provider ${i + 1}`))
               const seats = (prov.totalSeats ?? prov.total_seats) as number | null
               const active = (prov.activeSeats ?? prov.active_seats) as number | null
               const utilR = (prov.utilizationRate ?? prov.utilization_rate) as number | null
@@ -1096,7 +1343,7 @@ function EsgPDF({
               const alert = a as Json
               return React.createElement(View, { key: `alert-${i}`, style: styles.itemCardAccent },
                 React.createElement(Text, { style: styles.itemTitle },
-                  `${str(alert.provider)}  ·  Renewal in ${str(alert.monthsToRenewal)} months (${str(alert.renewalDate)})`
+                  `${normalizeProviderName(str(alert.provider))}  ·  Renewal in ${str(alert.monthsToRenewal)} months (${str(alert.renewalDate)})`
                 ),
                 React.createElement(Text, { style: styles.itemBody }, str(alert.actionRequired)),
               )
@@ -1110,17 +1357,61 @@ function EsgPDF({
   // PAGE 9 — INCENTIVES & GLOBAL FINANCIAL BENEFITS
   // ════════════════════════════════════════════════════════════════════════════
 
+  function parseIncentiveValue(valStr: string): number {
+    if (!valStr) return 0
+    const m = valStr.match(/[\d,]+(?:\.\d+)?/)
+    if (!m) return 0
+    return parseFloat(m[0].replace(/,/g, ''))
+  }
+
+  const IncentivesValueChart = () => {
+    const top5 = allIncentives.slice(0, 5).map((item: unknown) => {
+      const inc = item as Json
+      const name = str(inc.name ?? inc.title ?? inc.incentive).split('—')[0].trim().substring(0, 30)
+      const jurisdiction = str(inc.jurisdiction ?? inc.region ?? inc.country).substring(0, 12)
+      const valStr = str(inc.value ?? inc.amount ?? inc.benefit ?? inc.estimated_value)
+      const numVal = parseIncentiveValue(valStr)
+      return { name, jurisdiction, valStr, numVal }
+    })
+    const maxVal = Math.max(...top5.map(i => i.numVal), 1)
+    const BAR_W = 240
+    const svgHeight = top5.length * 26 + 20
+    return React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+      { width: 460, height: svgHeight, viewBox: `0 0 460 ${svgHeight}` },
+      React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+        { x: 0, y: 0, width: 460, height: svgHeight, fill: BG_CARD }
+      ),
+      ...top5.flatMap(({ name, jurisdiction, valStr, numVal }, i) => {
+        const bw = numVal > 0 ? Math.max(4, (numVal / maxVal) * BAR_W) : 4
+        const y = 14 + i * 26
+        return [
+          React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+            { key: `in-name-${i}`, x: 8, y: y - 2, fontSize: 7, fill: DARK },
+            `${name}  (${jurisdiction})`
+          ),
+          React.createElement(Rect as unknown as React.ComponentType<{ key?: string; x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+            { key: `in-bar-${i}`, x: 8, y: y + 2, width: bw, height: 10, fill: GREEN, rx: 2 }
+          ),
+          React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+            { key: `in-val-${i}`, x: bw + 14, y: y + 10, fontSize: 7, fill: MUTED },
+            valStr.length > 35 ? valStr.substring(0, 35) + '…' : valStr
+          ),
+        ]
+      }),
+    )
+  }
+
   const defaultIncentives = [
-    { name: 'EU CSRD — Mandatory Compliance', jurisdiction: 'European Union', description: 'The Corporate Sustainability Reporting Directive is mandatory for all large undertakings (>250 employees or €40M revenue) from FY2024, cascading to mid-market from FY2025. Double materiality assessment required. Non-compliance penalties: up to €10M or 2.5% of worldwide annual turnover (whichever is higher) per member state enforcement.', value: 'Penalty avoidance up to €10M / 2.5% turnover' },
-    { name: 'EU AI Act — Environmental Provisions', jurisdiction: 'European Union', description: 'High-risk AI systems must document and disclose environmental performance data including energy consumption and carbon impact. GreenLens AI measurement data constitutes the required technical documentation.', value: 'Compliance evidence for regulatory clearance' },
-    { name: 'US Inflation Reduction Act (IRA) — Investment Tax Credit', jurisdiction: 'United States', description: '30% investment tax credit (ITC) available for qualifying clean technology infrastructure, including energy-efficient computing and AI infrastructure upgrades. Requires documented baseline and improvement metrics: precisely what GreenLens AI provides.', value: '30% ITC on qualifying capital expenditure' },
-    { name: 'UK HMRC R&D Tax Relief', jurisdiction: 'United Kingdom', description: 'SMEs can claim up to 33p relief per £1 of qualifying R&D expenditure. AI efficiency and sustainable technology projects increasingly qualify under updated HMRC guidance. Large companies can claim 20% RDEC. FCA ESG disclosure requirements apply to financial services firms with immediate effect.', value: 'Up to 33% relief for SMEs; 20% RDEC for large companies' },
-    { name: 'Singapore MAS ESG Framework & Enterprise Development Grant', jurisdiction: 'Singapore', description: "MAS ESG disclosure framework requires financial institutions to disclose material sustainability risks. Enterprise Development Grant (EDG) co-funds up to 70% of eligible sustainability and technology adoption costs. Singapore's Green Lane programme provides expedited approval for sustainable technology deployments.", value: 'Up to 70% co-funding via EDG' },
-    { name: 'Japan Green Innovation Fund & METI GX Strategy', jurisdiction: 'Japan', description: "Japan's ¥2 trillion (approx. $14B) Green Innovation Fund supports organisations demonstrating measurable sustainability progress as part of METI's GX (Green Transformation) strategy. Carbon-neutral 2050 commitment creates mandatory disclosure pathway for all major listed entities from 2025.", value: 'Grant access via METI GX programme' },
-    { name: 'France Crédit d\'Impôt Recherche (CIR)', jurisdiction: 'France', description: '30% tax credit on qualifying R&D expenditure, rising to 50% for the first €100M in eligible spend for new claimants. AI efficiency optimisation and sustainability measurement qualify as eligible R&D activities under updated MESRI guidance.', value: '30–50% tax credit on eligible R&D' },
-    { name: 'Germany KfW Green Innovation Grants', jurisdiction: 'Germany', description: 'KfW Bank programmes provide low-interest financing and grants for sustainable technology investment. AI efficiency projects with documented environmental improvement plans are eligible for Energieeffizienz Programm funding, typically covering 25–50% of project costs.', value: '25–50% of eligible project costs' },
-    { name: 'Canada Clean Technology Investment Tax Credit', jurisdiction: 'Canada', description: '30% refundable investment tax credit for qualifying clean technology property, including energy-efficient computing infrastructure. Organisations must demonstrate a sustainability improvement plan, which GreenLens AI reporting directly supports.', value: '30% refundable ITC' },
-    { name: 'Australia ASIC Climate Risk & CEFC Financing', jurisdiction: 'Australia', description: 'ASIC requires climate risk disclosure for all listed entities and large proprietary companies. The Clean Energy Finance Corporation (CEFC) provides concessional financing for sustainable technology investment, prioritising projects with documented environmental baselines.', value: 'Concessional financing up to 100% of eligible costs' },
+    { name: 'EU CSRD — Mandatory Compliance', jurisdiction: 'European Union', value: 'Penalty avoidance up to €10M / 2.5% turnover' },
+    { name: 'EU AI Act — Environmental Provisions', jurisdiction: 'European Union', value: 'Compliance evidence for regulatory clearance' },
+    { name: 'US Inflation Reduction Act (IRA)', jurisdiction: 'United States', value: '30% ITC on qualifying capital expenditure' },
+    { name: 'UK HMRC R&D Tax Relief', jurisdiction: 'United Kingdom', value: 'Up to 33% relief for SMEs; 20% RDEC' },
+    { name: 'Singapore EDG & Green Lane', jurisdiction: 'Singapore', value: 'Up to 70% co-funding via EDG' },
+    { name: 'Japan Green Innovation Fund', jurisdiction: 'Japan', value: 'Grant access via METI GX programme' },
+    { name: 'France CIR', jurisdiction: 'France', value: '30–50% tax credit on eligible R&D' },
+    { name: 'Germany KfW Green Grants', jurisdiction: 'Germany', value: '25–50% of eligible project costs' },
+    { name: 'Canada Clean Tech ITC', jurisdiction: 'Canada', value: '30% refundable ITC' },
+    { name: 'Australia CEFC Financing', jurisdiction: 'Australia', value: 'Concessional financing up to 100%' },
   ]
 
   const allIncentives = incentiveList.length > 0 ? incentiveList : defaultIncentives
@@ -1130,38 +1421,31 @@ function EsgPDF({
       React.createElement(SectionHead, {
         num: '06',
         title: 'Incentives & Global Financial Benefits',
-        lead: 'International grants, tax credits, compliance obligations, and ESG index inclusion benefits.',
+        lead: 'Available grants, tax credits, and compliance incentives for organisations with documented AI sustainability data.',
       }),
-      React.createElement(BodyText, null,
-        `The financial case for AI environmental measurement extends well beyond cost avoidance. Across every major economic bloc, governments have constructed a framework of financial incentives designed to accelerate corporate sustainability action. These incentives require precisely the kind of objective, auditable baseline data that GreenLens AI produces. At the same time, the penalty architecture for non-compliance has grown materially: the EU's CSRD regime now imposes fines of up to €10 million or 2.5% of worldwide annual turnover for material reporting failures, whichever is higher. For any organisation with European operations or customer relationships, the cost-benefit calculation has fundamentally shifted.`
+      React.createElement(Text, { style: styles.bodyMuted },
+        `Documented AI sustainability data unlocks grants, tax credits, and ESG index inclusion benefits globally. The chart and table below highlight the highest-value programmes applicable to ${companyName}.`
       ),
-      React.createElement(BodyText, null,
-        `Beyond direct grants and tax credits, ESG index inclusion creates a structural financial benefit that compounds over time. Membership of the FTSE4Good Index, MSCI ESG Leaders, or the Dow Jones Sustainability Index (DJSI) demonstrably reduces the cost of capital: sustainability-linked loans from major lenders now offer interest rate step-downs of 25–100 basis points for borrowers who meet documented ESG improvement targets, and institutional investors managing an estimated $120 trillion in assets under management screen ESG credentials as a precondition of investment. The data captured by GreenLens AI is the currency of this market.`
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4, marginTop: 8 } }, 'Top Incentives by Financial Value'),
+      React.createElement(IncentivesValueChart, null),
+      React.createElement(View, { style: { marginTop: 10 } },
+        React.createElement(View, { style: styles.tableHeader },
+          React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 3 } }, 'Programme'),
+          React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 1.5 } }, 'Jurisdiction'),
+          React.createElement(Text, { style: { ...styles.tableHeaderCell, flex: 2 } }, 'Value'),
+        ),
+        ...allIncentives.slice(0, 6).map((item: unknown, i: number) => {
+          const inc = item as Json
+          const name = str(inc.name ?? inc.title ?? inc.incentive) || `Incentive ${i + 1}`
+          const value = str(inc.value ?? inc.amount ?? inc.benefit ?? inc.estimated_value)
+          const jurisdiction = str(inc.jurisdiction ?? inc.region ?? inc.country)
+          return React.createElement(View, { key: `inc-${i}`, style: i % 2 === 0 ? styles.tableRow : styles.tableRowAlt },
+            React.createElement(Text, { style: { ...styles.tableCell, flex: 3 } }, name),
+            React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 1.5 } }, jurisdiction || '—'),
+            React.createElement(Text, { style: { ...styles.tableCellMuted, flex: 2 } }, value || '—'),
+          )
+        }),
       ),
-      React.createElement(BodyText, null,
-        `Procurement represents an underappreciated dimension of the incentive landscape. The EU Sustainable Finance Action Plan requires large public contracting authorities and corporates subject to CSRD to cascade sustainability criteria into their supply chains. Organisations that cannot demonstrate documented AI environmental credentials risk exclusion from procurement processes for enterprise clients operating under these obligations, a market access risk that translates directly to revenue exposure. Conversely, organisations with verified sustainability data can differentiate on ESG credentials in competitive tender situations, an advantage that is quantifiable and durable.`
-      ),
-      ...allIncentives.slice(0, 10).map((item: unknown, i: number) => {
-        const inc = item as Json
-        const name = str(inc.name ?? inc.title ?? inc.incentive) || `Incentive ${i + 1}`
-        const desc = str(inc.description ?? inc.detail ?? inc.summary)
-        const value = str(inc.value ?? inc.amount ?? inc.benefit ?? inc.estimated_value)
-        const jurisdiction = str(inc.jurisdiction ?? inc.region ?? inc.country)
-        return React.createElement(View, { key: `inc-${i}`, style: styles.itemCard },
-          React.createElement(View, { style: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 } },
-            React.createElement(Text, { style: { ...styles.itemTitle, flex: 1 } }, name),
-            jurisdiction
-              ? React.createElement(View, { style: { ...styles.frameworkBadge, marginLeft: 8 } },
-                  React.createElement(Text, { style: styles.frameworkText }, jurisdiction),
-                )
-              : null,
-          ),
-          React.createElement(Text, { style: styles.itemBody }, desc),
-          value
-            ? React.createElement(Text, { style: styles.impactBadge }, `Value: ${value}`)
-            : null,
-        )
-      }),
       React.createElement(Footer, null),
     )
 
@@ -1218,12 +1502,11 @@ function EsgPDF({
             )
           ),
 
-          // Stage labels — two Text elements per stage (line1 at y=191, line2 at y=202)
-          // Using short labels to prevent overlap across 5 stages in ~420px of x space
+          // Stage labels
           ...[
             { x: 70,  l1: 'Technology', l2: 'Trigger',         green: false },
             { x: 162, l1: 'Peak of',    l2: 'Expectations',    green: false },
-            { x: 270, l1: 'Trough of',  l2: 'Disillusionment', green: true  },
+            { x: 270, l1: 'Trough of',  l2: 'Disillusionment', green: false },
             { x: 382, l1: 'Slope of',   l2: 'Enlightenment',   green: false },
             { x: 468, l1: 'Plateau of', l2: 'Productivity',    green: false },
           ].flatMap(({ x, l1, l2, green }, i) => [
@@ -1237,26 +1520,31 @@ function EsgPDF({
             ),
           ]),
 
-          // "WE ARE HERE" marker at Trough (x=270, y=158)
+          // "WE ARE HERE" marker — on the downturn between Peak and Trough
           React.createElement(Circle as unknown as React.ComponentType<{ cx: number; cy: number; r: number; fill: string; stroke: string; strokeWidth: number }>,
-            { cx: 270, cy: 158, r: 5, fill: GREEN, stroke: WHITE, strokeWidth: 1.5 }
+            { cx: 232, cy: 120, r: 5, fill: GREEN, stroke: WHITE, strokeWidth: 1.5 }
           ),
           React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; strokeDasharray?: string }>,
-            { x1: 270, y1: 152, x2: 270, y2: 128, stroke: GREEN, strokeWidth: 1, strokeDasharray: '3 2' }
+            { x1: 232, y1: 114, x2: 232, y2: 90, stroke: GREEN, strokeWidth: 1, strokeDasharray: '3 2' }
           ),
           React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string; fontWeight?: string; textAnchor?: string }>,
-            { x: 270, y: 124, fontSize: 6.5, fill: GREEN, fontWeight: 'bold', textAnchor: 'middle' },
+            { x: 232, y: 86, fontSize: 6.5, fill: GREEN, fontWeight: 'bold', textAnchor: 'middle' },
             'WE ARE HERE'
+          ),
+          React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string; textAnchor?: string }>,
+            { x: 232, y: 215, fontSize: 5, fill: GREEN, textAnchor: 'middle' },
+            '▲ Still descending'
           ),
         )
       ),
 
-      // Stage pills (summary row)
+      // Stage pills
       React.createElement(View, { style: styles.hypePillRow },
         ...[
           { label: 'Technology Trigger', active: false },
           { label: 'Peak of Inflated Expectations', active: false },
-          { label: 'Trough of Disillusionment', active: true },
+          { label: 'Descending (Current)', active: true },
+          { label: 'Trough of Disillusionment', active: false },
           { label: 'Slope of Enlightenment', active: false },
           { label: 'Plateau of Productivity', active: false },
         ].map(stage =>
@@ -1265,17 +1553,11 @@ function EsgPDF({
           )
         ),
       ),
-      React.createElement(BodyText, null,
-        `Generative AI and large language models followed the classic Hype Cycle pattern with unusual speed. The Technology Trigger arrived with GPT-3 in 2020. The Peak of Inflated Expectations, characterised by exponential media coverage, stratospheric valuations, and sweeping productivity promises, was reached by late 2022 and maintained through 2023. By 2024–2026, the market has moved firmly into the Trough of Disillusionment. This phase is characterised not by failure but by recalibration: enterprises are scrutinising AI ROI with the same rigour applied to any major capital investment. Productivity claims that were accepted on faith in 2022 now require evidence.`
+      React.createElement(Text, { style: styles.bodyMuted },
+        `GenAI peaked in expectations through 2022–2023. As of 2025–2026, the market is still on the downturn — we have not yet reached the Trough of Disillusionment. Enterprises are scrutinising AI ROI more rigorously and recalibrating from hype to evidence. The trough remains ahead, and the depth of the descent will depend on how quickly organisations adopt measurement discipline and demonstrate tangible returns.`
       ),
-      React.createElement(BodyText, null,
-        `The Trough of Disillusionment is not a signal to retreat from AI investment. It is precisely the moment when the discipline of measurement becomes a competitive differentiator. Organisations that begin collecting objective, provider-agnostic environmental and efficiency data during the Trough will arrive at the Slope of Enlightenment (estimated 2026–2028) with a multi-year baseline enabling genuinely evidence-based decisions. They will be able to demonstrate consistent improvement trajectories to regulators and investors, substantiate ROI calculations with actual cost and carbon data, and position AI investment within a credible sustainability narrative. Organisations that wait until the Slope is visible to begin measurement will face the same disadvantage as those who deferred cloud cost optimisation until hyperscaler bills had already compounded.`
-      ),
-      React.createElement(BodyText, null,
-        `${companyName}'s current benchmark position: carbon efficiency at the ${carbonPct != null ? `${fmt(carbonPct)}th percentile` : 'measured percentile'} relative to peer organisations, with a ${trendDir || 'current'} trend direction${anomaly === true ? ' and a statistical anomaly detected in usage patterns that warrants investigation' : ''}. This provides the objective foundation for a first-mover positioning strategy. ${hypeCtxBench ? hypeCtxBench : 'First-mover advantage in AI environmental data is time-limited: as CSRD compliance requirements cascade through the mid-market, the window in which this data constitutes a differentiator rather than a baseline expectation will close. The organisations that establish measurement discipline now will define the benchmark that others are measured against.'}`
-      ),
-      React.createElement(BodyText, null,
-        `This data enables four strategic capabilities that will become increasingly valuable on the Slope of Enlightenment: accurate, auditable ROI calculation for AI investment; regulatory compliance readiness for CSRD, IFRS S2, and SEC climate rules; evidence-based model optimisation that reduces environmental impact without reducing capability; and a documented sustainability narrative for institutional investors, enterprise procurement teams, and talent markets that screen on ESG credentials. Each of these capabilities compounds in value as the market moves toward the Plateau of Productivity.`
+      React.createElement(Text, { style: styles.bodyMuted },
+        `${companyName}'s benchmark: carbon efficiency at the ${carbonPct != null ? `${fmt(carbonPct)}th percentile` : 'measured percentile'} with a ${trendDir || 'current'} trend${anomaly === true ? ' (anomaly detected)' : ''}. Establishing measurement now — while still descending — positions the organisation to arrive at the Slope of Enlightenment (est. 2027–2029) with a multi-year baseline. First-mover advantage in AI environmental data is time-limited; early adopters define the benchmark others are measured against.`
       ),
       React.createElement(Footer, null),
     )
@@ -1285,48 +1567,139 @@ function EsgPDF({
   // ════════════════════════════════════════════════════════════════════════════
 
   const defaultDecisions = [
-    { title: 'Implement Task-Appropriate Model Selection Policy', description: 'Establish internal guidelines that classify AI tasks by complexity and prescribe the appropriate model tier. Frontier models should be reserved for tasks requiring advanced reasoning, complex code generation, or multimodal capabilities. Routine summarisation, classification, and drafting tasks should default to efficient-tier models.', impact: 'Estimated 20–40% reduction in AI energy consumption and licence cost without capability reduction.' },
-    { title: 'Launch Quarterly AI Licence Audit Programme', description: 'Establish a quarterly review process to identify dormant seats across all connected providers ahead of renewal windows. Coordinate with HR to align licence counts with active headcount and validated use cases.', impact: 'Reclaim an estimated annual saving at next renewal cycle based on current dormancy data.' },
-    { title: 'Register for Applicable International Incentive Programmes', description: 'Using the GreenLens AI report as supporting documentation, submit applications to all applicable national grant and tax credit schemes identified in Section 06. Prioritise jurisdictions where deadlines fall within the next financial quarter.', impact: 'Material grant and tax credit value across identified eligible programmes.' },
-    { title: 'Establish Internal AI Carbon Budget', description: 'Translate the carbon footprint baseline established in this report into a per-team or per-cost-centre carbon allocation. Communicate the budget alongside financial expenditure data to drive team-level accountability and embed environmental considerations into AI procurement decisions.', impact: 'Structural behavioural change that sustains improvement beyond initial optimisation interventions.' },
-    { title: 'Prepare CSRD Double-Materiality Assessment', description: 'Engage finance and legal teams to integrate GreenLens AI data into the CSRD double-materiality assessment process. The environmental impact of AI operations and the financial risk of regulatory non-compliance are both material under the CSRD framework and must be addressed in the sustainability statement.', impact: 'Compliance readiness ahead of mandatory reporting deadline; penalty risk mitigation.' },
+    { title: 'Implement Task-Appropriate Model Selection Policy', impact: 'Estimated 20–40% reduction in AI energy consumption and licence cost.' },
+    { title: 'Launch Quarterly AI Licence Audit Programme', impact: 'Reclaim estimated annual saving at next renewal cycle.' },
+    { title: 'Register for International Incentive Programmes', impact: 'Material grant and tax credit value across eligible programmes.' },
+    { title: 'Establish Internal AI Carbon Budget', impact: 'Structural behavioural change sustaining improvement long-term.' },
+    { title: 'Prepare CSRD Double-Materiality Assessment', impact: 'Compliance readiness; penalty risk mitigation.' },
   ]
 
   const allDecisions = decisionList.length > 0 ? decisionList : defaultDecisions
+
+  function parseImpactPercent(impactStr: string): number {
+    const m = impactStr.match(/(\d+)[–-]?(\d+)?%/)
+    if (m) return parseInt(m[2] ?? m[1], 10)
+    if (/compliance|readiness|penalty/i.test(impactStr)) return 60
+    if (/structural|behavioural/i.test(impactStr)) return 45
+    if (/material|grant|saving/i.test(impactStr)) return 55
+    return 40
+  }
+
+  const RecommendationsImpactChart = () => {
+    const items = allDecisions.slice(0, 6).map((item: unknown) => {
+      const d = item as Json
+      const title = str(d.title ?? d.decision ?? d.action).substring(0, 40)
+      const impact = str(d.impact ?? d.expectedImpact ?? d.expected_impact)
+      const impactPct = parseImpactPercent(impact)
+      return { title: title.length >= 40 ? title.substring(0, 38) + '…' : title, impact, impactPct }
+    })
+    const maxPct = Math.max(...items.map(i => i.impactPct), 1)
+    const BAR_W = 220
+    const svgHeight = items.length * 26 + 16
+    return React.createElement(View, { style: { marginBottom: 10 } },
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4 } }, 'Estimated Impact by Recommendation'),
+      React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+        { width: 460, height: svgHeight, viewBox: `0 0 460 ${svgHeight}` },
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+          { x: 0, y: 0, width: 460, height: svgHeight, fill: BG_CARD }
+        ),
+        ...items.flatMap(({ title, impact, impactPct }, i) => {
+          const bw = Math.max(4, (impactPct / maxPct) * BAR_W)
+          const y = 12 + i * 26
+          return [
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `ri-lbl-${i}`, x: 8, y: y, fontSize: 6.5, fill: DARK }, title
+            ),
+            React.createElement(Rect as unknown as React.ComponentType<{ key?: string; x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+              { key: `ri-bar-${i}`, x: 8, y: y + 3, width: bw, height: 10, fill: i === 0 ? GREEN : GREEN_LIGHT, rx: 2 }
+            ),
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `ri-val-${i}`, x: bw + 14, y: y + 11, fontSize: 6.5, fill: MUTED },
+              impact.length > 50 ? impact.substring(0, 48) + '…' : impact
+            ),
+          ]
+        }),
+      ),
+    )
+  }
 
   const StrategicDecisionsPage = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
       React.createElement(SectionHead, {
         num: '08',
         title: 'Strategic Decisions & Recommendations',
-        lead: 'Prioritised action plan with business impact, mitigation strategies, and implementation guidance.',
+        lead: `Prioritised recommendations derived from ${companyName}'s measured data, ordered by financial and environmental impact.`,
       }),
-      React.createElement(BodyText, null,
-        `The following strategic recommendations are derived directly from ${companyName}'s measured data and are calibrated to deliver the maximum combined benefit across three dimensions: financial return (cost reduction, grant capture, regulatory penalty avoidance), environmental improvement (carbon and water reduction), and strategic positioning (regulatory readiness, ESG index eligibility, procurement differentiation). Each recommendation has been assessed for feasibility within a twelve-month implementation horizon and does not require additional technology procurement beyond the GreenLens AI platform.`
+      React.createElement(Text, { style: styles.bodyMuted },
+        `Each recommendation targets financial return, environmental improvement, and regulatory readiness within a 12-month horizon.`
       ),
-      React.createElement(BodyText, null,
-        `The recommendations are presented in priority order, weighted by the magnitude of financial impact and the urgency of any associated compliance deadlines. Leadership teams are advised to assign executive ownership to each recommendation and to establish a measurement cadence. GreenLens AI's quarterly reporting cycle is designed to provide the ongoing data required to track implementation progress and demonstrate year-on-year improvement to external stakeholders.`
-      ),
+      React.createElement(RecommendationsImpactChart, null),
       ...allDecisions.slice(0, 6).map((item: unknown, i: number) => {
         const d = item as Json
         const title  = str(d.title ?? d.decision ?? d.action) || `Recommendation ${i + 1}`
-        const detail = str(d.description ?? d.rationale ?? d.detail ?? d.summary)
         const impact = str(d.impact ?? d.expectedImpact ?? d.expected_impact)
-        return React.createElement(View, { key: `dec-${i}`, style: styles.itemCardAccent },
-          React.createElement(Text, { style: styles.itemSubtitle }, `Recommendation ${String(i + 1).padStart(2, '0')}`),
-          React.createElement(Text, { style: styles.itemTitle }, title),
-          React.createElement(Text, { style: styles.itemBody }, detail),
+        return React.createElement(View, { key: `dec-${i}`, style: { ...styles.itemCard, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } },
+          React.createElement(View, { style: { flex: 1 } },
+            React.createElement(Text, { style: { ...styles.itemSubtitle, marginBottom: 0 } }, `${String(i + 1).padStart(2, '0')}`),
+            React.createElement(Text, { style: { ...styles.itemTitle, marginBottom: 0 } }, title),
+          ),
           impact
-            ? React.createElement(Text, { style: styles.impactBadge }, `Expected Impact: ${impact}`)
+            ? React.createElement(Text, { style: { ...styles.impactBadge, marginTop: 0, marginLeft: 8 } }, impact)
             : null,
         )
       }),
+      React.createElement(View, { style: { marginTop: 10, paddingTop: 6, borderTopWidth: 1, borderTopColor: RULE_COLOR } },
+        React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: MUTED, marginBottom: 2 } }, 'Methodology'),
+        React.createElement(Text, { style: { fontSize: 7, color: MUTED, lineHeight: 1.4 } },
+          `Recommendations are derived from ${companyName}'s measured usage, carbon, water, and licence data collected via provider admin APIs during ${reportingPeriod}. Impact estimates are based on GreenLens AI's cross-organisational analysis of comparable deployments. Priority weighting considers financial magnitude, compliance deadline urgency, and implementation feasibility. Chart bars represent relative estimated impact across the three dimensions: cost reduction, environmental improvement, and strategic positioning.`
+        ),
+      ),
       React.createElement(Footer, null),
     )
 
   // ════════════════════════════════════════════════════════════════════════════
   // PAGE 12 — ESG DISCLOSURE STATEMENT
   // ════════════════════════════════════════════════════════════════════════════
+
+  const EsgSummaryChart = () => {
+    const entries = [
+      { label: 'Carbon Footprint', unit: 'kg CO₂e', val: carbonKg, color: GREEN },
+      { label: 'Optimised Carbon', unit: 'kg CO₂e', val: altCarbon, color: GREEN_LIGHT },
+      { label: 'Carbon Savings', unit: 'kg CO₂e', val: carbonSavings, color: '#52b788' },
+      { label: 'Water Consumed', unit: 'k litres', val: waterLiters != null ? waterLiters / 1000 : null, color: '#2980b9' },
+    ].filter(v => v.val != null) as { label: string; unit: string; val: number; color: string }[]
+
+    if (entries.length === 0) return null
+
+    const maxVal = Math.max(...entries.map(v => v.val), 1)
+    const BAR_W = 280
+    const svgHeight = entries.length * 28 + 16
+
+    return React.createElement(View, { style: { marginBottom: 10 } },
+      React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string }>,
+        { width: 460, height: svgHeight, viewBox: `0 0 460 ${svgHeight}` },
+        React.createElement(Rect as unknown as React.ComponentType<{ x: number; y: number; width: number; height: number; fill: string }>,
+          { x: 0, y: 0, width: 460, height: svgHeight, fill: BG_CARD }
+        ),
+        ...entries.flatMap(({ label, unit, val, color }, i) => {
+          const bw = Math.max(4, (val / maxVal) * BAR_W)
+          const y = 14 + i * 28
+          return [
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `esg-lbl-${i}`, x: 8, y: y, fontSize: 7, fill: MUTED }, label
+            ),
+            React.createElement(Rect as unknown as React.ComponentType<{ key?: string; x: number; y: number; width: number; height: number; fill: string; rx: number }>,
+              { key: `esg-bar-${i}`, x: 8, y: y + 4, width: bw, height: 12, fill: color, rx: 2 }
+            ),
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string }>,
+              { key: `esg-val-${i}`, x: bw + 14, y: y + 14, fontSize: 8, fill: DARK },
+              `${fmt(val, val > 1000 ? 0 : 2)} ${unit}`
+            ),
+          ]
+        }),
+      )
+    )
+  }
 
   const defaultEsgText = `${companyName} is committed to the transparent and accurate disclosure of its artificial intelligence environmental impacts in accordance with internationally recognised sustainability reporting frameworks. The data presented in this report has been collected by GreenLens AI using automated integration with provider administrative APIs and represents a complete account of organisational AI consumption across all connected accounts during the reporting period ${reportingPeriod}.
 
@@ -1347,7 +1720,7 @@ Data Privacy: No individual employee usage data, prompt content, conversation hi
         title: 'ESG Disclosure Statement',
         lead: 'Formal disclosure aligned to CSRD, GRI 305, IFRS S2, and CDP frameworks.',
       }),
-      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 8 } }, 'Framework Alignment'),
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4 } }, 'Framework Alignment'),
       React.createElement(View, { style: styles.frameworkRow },
         ...(frameworks as string[]).map((fw: string) =>
           React.createElement(View, { key: `fw-${fw}`, style: styles.frameworkBadge },
@@ -1355,21 +1728,39 @@ Data Privacy: No individual employee usage data, prompt content, conversation hi
           )
         ),
       ),
-      ...(esgText || defaultEsgText).split('\n\n').filter(Boolean).map((para: string, i: number) =>
-        React.createElement(Text, { key: `esg-${i}`, style: styles.body }, para.trim())
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 4, marginTop: 10 } }, 'Reported Environmental Metrics'),
+      React.createElement(EsgSummaryChart, null),
+      React.createElement(BodyText, null,
+        `${companyName} discloses the environmental impacts of its AI operations in accordance with CSRD, GRI Standard 305-3, IFRS S2, and CDP Climate Change frameworks. Carbon dioxide equivalent (CO₂e) emissions are calculated using published energy intensity coefficients per model class, combined with regional grid carbon intensity factors (aligned to IPCC AR6). Water consumption is derived from WUE metrics published by relevant data centre operators. All figures represent Scope 3 indirect emissions under GHG Protocol Category 1 (Purchased goods and services).`
+      ),
+      React.createElement(BodyText, null,
+        `This disclosure covers ${reportingPeriod} and addresses both impact materiality (AI operations' effect on climate) and financial materiality (climate-related risks to ${companyName}'s financial position), as required by CSRD double-materiality assessment. No individual employee data, prompt content, or personally identifiable information is captured or reported at any point.`
+      ),
+      React.createElement(BodyText, null,
+        `Limitations: estimates are subject to the completeness of provider API data and accuracy of published energy intensity coefficients, which are updated as new peer-reviewed data becomes available.`
       ),
       esgCarbonMethod
-        ? React.createElement(MethodBox, { label: 'Carbon Calculation Methodology', text: esgCarbonMethod })
+        ? React.createElement(View, { style: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: RULE_COLOR } },
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: MUTED, marginBottom: 2 } },
+              'Carbon Calculation Methodology'
+            ),
+            React.createElement(Text, { style: { fontSize: 7, color: MUTED, lineHeight: 1.5 } }, esgCarbonMethod),
+          )
         : null,
       esgWaterMethod
-        ? React.createElement(MethodBox, { label: 'Water Calculation Methodology', text: esgWaterMethod })
+        ? React.createElement(View, { style: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: RULE_COLOR } },
+            React.createElement(Text, { style: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: MUTED, marginBottom: 2 } },
+              'Water Calculation Methodology'
+            ),
+            React.createElement(Text, { style: { fontSize: 7, color: MUTED, lineHeight: 1.5 } }, esgWaterMethod),
+          )
         : null,
-      React.createElement(View, { style: { marginTop: 16, backgroundColor: BG_CARD, borderRadius: 5, padding: 14 } },
+      React.createElement(View, { style: { marginTop: 12, backgroundColor: BG_CARD, borderRadius: 5, padding: 14 } },
         React.createElement(Text, { style: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 6 } },
           'Prepared By'
         ),
         React.createElement(Text, { style: styles.bodyMuted },
-          `This report was prepared by GreenLens AI on behalf of ${companyName}. GreenLens AI is an independent AI environmental measurement platform. The data, calculations, and methodology in this report reflect GreenLens AI's best estimates based on available provider data and published scientific literature as at the report generation date. This report does not constitute independent third-party assurance; organisations seeking assured ESG disclosures should engage an accredited assurance provider.`
+          `This report was prepared by GreenLens AI on behalf of ${companyName}. This report does not constitute independent third-party assurance; organisations seeking assured ESG disclosures should engage an accredited assurance provider.`
         ),
         React.createElement(Text, { style: { fontSize: 8, color: MUTED, marginTop: 8 } },
           `Report generated: ${today}  ·  Reporting period: ${reportingPeriod}  ·  Generated by GreenLens AI  ·  greenlens.ai`
@@ -1436,26 +1827,25 @@ export async function GET(request: Request) {
     let geminiNarrative = ''
     let geminiGlobal    = ''
 
-    const execSummaryPrompt = `You are a professional ESG consultant writing a corporate sustainability report executive summary. Write exactly 3 well-structured paragraphs (no headers, no bullet points, continuous prose) for the executive summary of an AI environmental impact report.
+    const execSummaryPrompt = `You are a professional ESG consultant writing a concise chart explanation for an executive summary. Write exactly 2 short paragraphs (2-3 sentences each, no headers, no bullets, no markdown).
 
 Company: ${companyName}
 Reporting Period: ${period}
-AI Carbon Footprint: ${carbonKg != null ? `${carbonKg.toLocaleString()} kg CO2e` : 'measured quantity'}
-AI Water Consumption: ${waterLiters != null ? `${waterLiters.toLocaleString()} litres` : 'measured quantity'}
+AI Carbon Usage: ${carbonKg != null ? `${carbonKg.toLocaleString()} kg CO2e` : 'measured quantity'}
+AI Water Usage: ${waterLiters != null ? `${waterLiters.toLocaleString()} litres` : 'measured quantity'}
 Model Efficiency Score: ${effScore != null ? `${effScore}/100` : 'measured score'}
 Licence Utilisation Rate: ${utilRate != null ? `${utilRate.toFixed(1)}%` : 'measured rate'}
 
-Write in authoritative corporate language suitable for a board-level audience. Address: (1) the significance of having this objective measurement baseline in today's regulatory environment, (2) what the specific numbers reveal about the organisation's current AI footprint and optimisation opportunity, (3) the financial and strategic value of acting on this data now. Do not use bullet points. Write in flowing paragraphs only. Do not include any markdown formatting.`
+Paragraph 1: Briefly explain what the carbon and water usage comparison chart shows — current vs prior period trend and what it means for the organisation. Keep it to 2-3 sentences.
+Paragraph 2: One actionable suggestion based on the data — focus on model selection optimisation and licence rationalisation. Keep it to 2 sentences.
 
-    const globalNarrativePrompt = `Write exactly 2 authoritative paragraphs (continuous prose, no headers, no bullets) for a professional ESG report section explaining the global regulatory incentive landscape for AI environmental measurement.
+Write in authoritative corporate language for a board-level audience. Be concise — executives don't read long blocks of text.`
+
+    const globalNarrativePrompt = `Write 1-2 concise sentences (no headers, no bullets, no markdown) introducing a regulatory compliance and incentives table in a professional ESG report.
 
 Company: ${companyName}
 
-Cover in paragraph 1: The EU CSRD mandatory compliance obligations (penalties up to €10M or 2.5% of worldwide turnover), EU AI Act environmental provisions, EU Taxonomy Regulation, and what "double materiality" means financially for any business with European operations.
-
-Cover in paragraph 2: The financial incentive programmes available including US IRA 30% investment tax credit, UK HMRC R&D tax relief up to 33% for SMEs, Singapore EDG co-funding up to 70%, Japan's ¥2 trillion Green Innovation Fund, France CIR 30% R&D tax credit, Germany KfW grants, and sustainability-linked loans with ESG-related interest rate step-downs.
-
-Write in authoritative corporate language. No markdown. No bullet points. Flowing paragraphs only.`
+The sentence(s) should briefly state that global regulators now mandate AI environmental disclosure and that the table below summarises the key compliance frameworks, penalties, and financial incentives. Mention CSRD and the financial value of documented sustainability data. Be concise — the table does the heavy lifting.`
 
     try {
       geminiNarrative = await generateWithGemini(execSummaryPrompt)
