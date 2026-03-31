@@ -37,6 +37,11 @@ const PRIORITY_OPTIONS = [
   { label: 'Low urgency', value: 'low' },
 ]
 
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split("-").map(Number)
+  return new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
+}
+
 interface DecisionsPageProps {
   searchParams?: Promise<{ reportId?: string; priority?: string }>
 }
@@ -126,8 +131,8 @@ export default async function DecisionsPage({ searchParams }: DecisionsPageProps
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
             <DashboardFilterPill label="Quick wins" value={quickWinCount > 0 ? `${quickWinCount} available` : 'None flagged'} />

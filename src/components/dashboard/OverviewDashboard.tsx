@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Suspense } from 'react'
+import { Suspense, useState, useMemo } from 'react'
 import {
   CartesianGrid,
   Cell,
@@ -22,7 +22,6 @@ import {
 } from 'lucide-react'
 import {
   DashboardFilterBar,
-  DashboardFilterPill,
   DashboardHeader,
   DashboardMetaPill,
   DashboardPage,
@@ -30,8 +29,14 @@ import {
   DashboardStatCard,
   DashboardStatGrid,
   formatNumber,
+  titleize,
 } from '@/components/dashboard/DashboardPrimitives'
 import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
+
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+}
 
 interface OverviewDashboardProps {
   companyName: string
@@ -44,6 +49,7 @@ interface OverviewDashboardProps {
   carbonKg: number | null
   carbonDelta: number | null
   waterLiters: number | null
+  waterDelta: number | null
   modelEfficiencyScore: number | null
   modelScoreDelta: number | null
   licenseUtilizationRate: number | null
@@ -52,6 +58,44 @@ interface OverviewDashboardProps {
   carbonPercentile: number | null
   benchmarkSummary: string | null
   children?: ReactNode
+}
+
+const RADIAN = Math.PI / 180
+
+function renderPieLabel({ cx, cy, midAngle, outerRadius, payload }: {
+  cx?: number; cy?: number; midAngle?: number; outerRadius?: number; payload?: { name: string; display: string; color: string }
+}) {
+  if (cx == null || cy == null || midAngle == null || outerRadius == null || payload == null) return null
+  const sin = Math.sin(-RADIAN * midAngle)
+  const cos = Math.cos(-RADIAN * midAngle)
+  const sx = cx + (outerRadius + 8) * cos
+  const sy = cy + (outerRadius + 8) * sin
+  const mx = cx + (outerRadius + 33) * cos
+  const my = cy + (outerRadius + 33) * sin
+  const ex = mx + (cos >= 0 ? 23 : -23)
+  const ey = my
+  const textAnchor = cos >= 0 ? 'start' : 'end'
+  const textX = ex + (cos >= 0 ? 6 : -6)
+
+  return (
+    <g>
+      <path
+        d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`}
+        stroke={payload.color}
+        fill="none"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={ex} cy={ey} r={3} fill={payload.color} />
+      <text x={textX} y={ey - 6} textAnchor={textAnchor} fill="#152820" fontSize={11} fontWeight={600}>
+        {payload.name}
+      </text>
+      <text x={textX} y={ey + 8} textAnchor={textAnchor} fill="#5c6e67" fontSize={10}>
+        {payload.display}
+      </text>
+    </g>
+  )
 }
 
 function buildDistributionData(props: OverviewDashboardProps) {
@@ -99,12 +143,12 @@ function buildTrendData(props: OverviewDashboardProps) {
       ? -26
       : 8
   const amplitude = Math.max(40, base * 0.14)
-  const labels = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00']
+  const labels = ['9am', '10am', '11am', '12pm', '1pm', '2pm', '3pm', '4pm', '5pm']
 
   return labels.map((label, index) => {
-    const wave = Math.sin(index / 1.15) * amplitude
+    const wave = Math.sin(index / 0.9) * amplitude
     const slopeEffect = (index - 4) * directionalSlope
-    const anomalyBoost = props.anomalyDetected && index === 9 ? amplitude * 0.7 : 0
+    const anomalyBoost = props.anomalyDetected && index === 5 ? amplitude * 0.7 : 0
     const actual = Math.max(80, Math.round(base + wave + slopeEffect + anomalyBoost))
     const target = Math.round(Math.max(base * 1.15, actual * 1.08))
     return {
@@ -116,12 +160,17 @@ function buildTrendData(props: OverviewDashboardProps) {
 }
 
 export default function OverviewDashboard(props: OverviewDashboardProps) {
-  const distributionData = buildDistributionData(props)
-  const trendData = buildTrendData(props)
-  const totalSignal = distributionData.reduce((sum, item) => sum + item.value, 0)
-  const peakPoint = trendData.reduce((max, point) => point.actual > max.actual ? point : max, trendData[0])
-  const lowPoint = trendData.reduce((min, point) => point.actual < min.actual ? point : min, trendData[0])
-  const targetPeak = trendData.reduce((max, point) => Math.max(max, point.target), 0)
+  const [envView, setEnvView] = useState<'raw' | 'delta'>('raw')
+  const distributionData = useMemo(() => buildDistributionData(props), [
+    props.carbonKg, props.waterLiters, props.modelEfficiencyScore, props.licenseUtilizationRate,
+  ])
+  const trendData = useMemo(() => buildTrendData(props), [
+    props.projected30dRequests, props.trendDirection, props.anomalyDetected,
+  ])
+  const totalSignal = useMemo(() => distributionData.reduce((sum, item) => sum + item.value, 0), [distributionData])
+  const peakPoint = useMemo(() => trendData.reduce((max, point) => point.actual > max.actual ? point : max, trendData[0]), [trendData])
+  const lowPoint = useMemo(() => trendData.reduce((min, point) => point.actual < min.actual ? point : min, trendData[0]), [trendData])
+  const targetPeak = useMemo(() => trendData.reduce((max, point) => Math.max(max, point.target), 0), [trendData])
   const variance = peakPoint.actual - lowPoint.actual
   const efficiency = targetPeak > 0 ? Math.round((peakPoint.actual / targetPeak) * 100) : 0
 
@@ -130,7 +179,7 @@ export default function OverviewDashboard(props: OverviewDashboardProps) {
       <div className="space-y-6">
         <DashboardHeader
           title={`${props.companyName} — AI Sustainability`}
-          subtitle={`Overview · ${props.reportPeriod}`}
+          subtitle={`Overview · ${formatPeriodMonth(props.reportPeriod)}`}
           badge={(
             <DashboardMetaPill>
               {props.latestCompleteDay ? `Data through ${props.latestCompleteDay}` : 'Latest report synced'}
@@ -146,33 +195,59 @@ export default function OverviewDashboard(props: OverviewDashboardProps) {
               paramKey="reportId"
               value={props.requestedReportId ?? 'all'}
               options={[
-                { label: `${props.reportPeriod} (latest)`, value: 'all' },
+                { label: `${formatPeriodMonth(props.availableReports[0].reporting_period)} (Current)`, value: 'all' },
                 ...props.availableReports
-                  .filter((r) => r.reporting_period !== props.reportPeriod)
-                  .map((r) => ({ label: r.reporting_period, value: r.id })),
+                  .slice(1)
+                  .map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
-            <DashboardFilterPill label="Data Mode" value={props.anomalyDetected ? 'Anomaly Review' : 'Real-Time'} />
           </DashboardFilterBar>
         </Suspense>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-[0.14em] text-[#5a6e66]">Carbon &amp; Water</span>
+          <div className="flex gap-0.5 rounded-full bg-[#f0f3f0] p-0.5">
+            <button
+              onClick={() => setEnvView('raw')}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${envView === 'raw' ? 'bg-white text-[#152820] shadow-sm' : 'text-[#5a6e66] hover:text-[#1a2c24]'}`}
+            >
+              Raw
+            </button>
+            <button
+              onClick={() => setEnvView('delta')}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${envView === 'delta' ? 'bg-white text-[#152820] shadow-sm' : 'text-[#5a6e66] hover:text-[#1a2c24]'}`}
+            >
+              vs. last month
+            </button>
+          </div>
+        </div>
 
         <DashboardStatGrid>
           <DashboardStatCard
             label="Carbon"
-            value={props.carbonKg != null ? formatNumber(props.carbonKg, props.carbonKg < 100 ? 1 : 0) : '—'}
-            unit="kg CO2e"
-            delta={props.carbonDelta}
-            helper="Monthly AI footprint"
+            value={
+              envView === 'delta'
+                ? (props.carbonDelta != null ? `${props.carbonDelta > 0 ? '+' : ''}${props.carbonDelta}%` : '—')
+                : (props.carbonKg != null ? formatNumber(props.carbonKg, props.carbonKg < 100 ? 1 : 0) : '—')
+            }
+            unit={envView === 'delta' ? 'vs. last month' : 'kg CO2e'}
+            delta={envView === 'raw' ? props.carbonDelta : undefined}
+            helper={envView === 'delta' ? 'Month-over-month change' : 'Monthly AI footprint'}
             icon={<Leaf className="h-4 w-4" />}
             statusTone="warning"
           />
           <DashboardStatCard
             label="Water"
-            value={props.waterLiters != null ? formatNumber(props.waterLiters, props.waterLiters < 100 ? 1 : 0) : '—'}
-            unit="liters"
-            helper="Cooling-water estimate"
+            value={
+              envView === 'delta'
+                ? (props.waterDelta != null ? `${props.waterDelta > 0 ? '+' : ''}${props.waterDelta}%` : '—')
+                : (props.waterLiters != null ? formatNumber(props.waterLiters, props.waterLiters < 100 ? 1 : 0) : '—')
+            }
+            unit={envView === 'delta' ? 'vs. last month' : 'liters'}
+            delta={envView === 'raw' ? props.waterDelta : undefined}
+            helper={envView === 'delta' ? 'Month-over-month change' : 'Cooling-water estimate'}
             icon={<Droplets className="h-4 w-4" />}
-            statusLabel="Live"
+            statusLabel={envView === 'raw' ? 'Live' : undefined}
           />
           <DashboardStatCard
             label="Model Score"
@@ -194,53 +269,45 @@ export default function OverviewDashboard(props: OverviewDashboardProps) {
 
         <div className="grid gap-4 xl:grid-cols-[1fr_1.08fr]">
           <DashboardPanel
-            title="AI Sustainability Overview"
+            title="AI Impact Breakdown"
             subtitle="Distribution of normalized impact signals from this report."
           >
-            <div className="mt-4 grid items-center gap-4 lg:grid-cols-[1fr_220px]">
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={distributionData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={56}
-                      outerRadius={90}
-                      stroke="none"
-                      paddingAngle={3}
-                    >
-                      {distributionData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, _name, item) => [`${value}`, item.payload?.name ?? 'Metric']}
-                      contentStyle={{
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #ecf1ee',
-                        borderRadius: '14px',
-                        fontSize: '12px',
-                        color: '#152820',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="text-center lg:text-left">
-                <p className="text-4xl font-semibold tracking-tight text-[#152820]">{totalSignal}</p>
-                <p className="mt-1 text-sm text-[#5c6e67]">Total signal index</p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
-                  {distributionData.map((item) => (
-                    <span
-                      key={item.name}
-                      className="rounded-full px-3 py-1 text-[11px] font-semibold"
-                      style={{ backgroundColor: `${item.color}18`, color: item.color }}
-                    >
-                      {item.name}
-                    </span>
-                  ))}
+            <div className="relative mt-4 h-[380px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distributionData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={74}
+                    outerRadius={112}
+                    stroke="none"
+                    paddingAngle={3}
+                    label={renderPieLabel}
+                    labelLine={false}
+                  >
+                    {distributionData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, _name, item) => [`${value}`, item.payload?.name ?? 'Metric']}
+                    contentStyle={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #ecf1ee',
+                      borderRadius: '14px',
+                      fontSize: '12px',
+                      color: '#152820',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <p className="text-3xl font-semibold tracking-tight text-[#152820]">{totalSignal}</p>
+                  <p className="mt-1 text-xs text-[#5c6e67]">total index</p>
                 </div>
               </div>
             </div>
@@ -258,11 +325,11 @@ export default function OverviewDashboard(props: OverviewDashboardProps) {
           </DashboardPanel>
 
           <DashboardPanel
-            title="Usage Trend Projection"
+            title="Usage vs Capacity"
             subtitle="Derived from benchmark and anomaly statistics for the current report."
             badge={(
               <DashboardMetaPill>
-                {props.benchmarkAvailable ? (props.trendDirection ?? 'stable') : 'benchmark unavailable'}
+                {props.benchmarkAvailable ? titleize(props.trendDirection ?? 'stable') : 'Benchmark unavailable'}
               </DashboardMetaPill>
             )}
           >
@@ -274,7 +341,7 @@ export default function OverviewDashboard(props: OverviewDashboardProps) {
               ].map(({ value, label }) => (
                 <div key={label} className="rounded-xl border border-[#eef2ef] bg-[#fafcfb] px-3 py-2.5">
                   <p className="text-xl font-bold text-[#152820]">{value}</p>
-                  <p className="mt-0.5 text-[11px] uppercase tracking-[0.14em] text-[#5a6e66]">{label}</p>
+                  <p className="mt-0.5 text-xs uppercase tracking-[0.14em] text-[#5a6e66]">{label}</p>
                 </div>
               ))}
             </div>

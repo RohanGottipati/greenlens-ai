@@ -35,6 +35,11 @@ import {
   Users,
 } from 'lucide-react'
 
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split("-").map(Number)
+  return new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
+}
+
 interface LicensesPageProps {
   searchParams?: Promise<{ reportId?: string; provider?: string }>
 }
@@ -114,7 +119,7 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
       <div className="space-y-5">
         <DashboardHeader
           title="License intelligence"
-          subtitle={`${company!.name} · ${report.reporting_period}. Surface seat waste, renewal risk, and savings opportunities across the AI software portfolio.`}
+          subtitle={`${company!.name} · ${formatPeriodMonth(report.reporting_period)}. Surface seat waste, renewal risk, and savings opportunities across the AI software portfolio.`}
           badge={<DashboardMetaPill>{providers.length > 0 ? `${providers.length} providers modeled` : 'Awaiting license detail'}</DashboardMetaPill>}
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
@@ -135,8 +140,8 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
             <DashboardFilterPill label="Primary Risk" value={urgentRenewals.length > 0 ? 'Renewal Pressure' : 'Utilization Review'} />
