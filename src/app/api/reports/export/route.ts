@@ -748,10 +748,10 @@ function EsgPDF({
 
   const execNarrativeText = geminiNarrative ||
     narrative ||
-    `The measurement of artificial intelligence's environmental footprint has moved from academic curiosity to board-level imperative over the course of 2024–2026. For ${companyName}, the data captured during ${reportingPeriod} represents the organisation's first objective, provider-agnostic view of its AI-driven carbon and water consumption — a baseline that will define both the trajectory of future reductions and the organisation's credibility with regulators, investors, and procurement partners.\n\nThe headline figures demand attention. AI systems consumed ${carbonKg != null ? `${fmt(carbonKg)} kg of CO₂e` : 'a measurable quantity of carbon'} and ${waterLiters != null ? `${fmt(waterLiters)} litres of water` : 'significant water resources'} during the reporting period. These are not abstract environmental statistics; they represent direct operational costs, regulatory exposure under frameworks such as the EU Corporate Sustainability Reporting Directive (CSRD) and the SEC's climate disclosure rules, and a clear signal to institutional investors who now screen AI infrastructure sustainability as part of ESG due diligence. Organisations that cannot quantify their AI footprint face an escalating disadvantage in capital markets, government procurement, and talent attraction.\n\nThe model efficiency score of ${effScore != null ? `${fmt(effScore)}/100` : 'the current period'} and licence utilisation rate of ${utilRate != null ? `${pct(utilRate)}` : 'the measured period'} together reveal the financial opportunity embedded in this data. Frontier models — those at the cutting edge of capability — carry an energy and cost premium that is only justified when the task genuinely requires them. When high-powered models are routinely deployed for low-complexity tasks, the result is a compounding inefficiency: higher costs, greater carbon output, and an inflated environmental profile at precisely the moment regulators are scrutinising such metrics most closely.`
+    `The measurement of artificial intelligence's environmental footprint has moved from academic curiosity to board-level imperative over the course of 2024–2026. For ${companyName}, the data captured during ${reportingPeriod} represents the organisation's first objective, provider-agnostic view of its AI-driven carbon and water consumption: a baseline that will define both the trajectory of future reductions and the organisation's credibility with regulators, investors, and procurement partners.\n\nThe headline figures demand attention. AI systems consumed ${carbonKg != null ? `${fmt(carbonKg)} kg of CO₂e` : 'a measurable quantity of carbon'} and ${waterLiters != null ? `${fmt(waterLiters)} litres of water` : 'significant water resources'} during the reporting period. These are not abstract environmental statistics; they represent direct operational costs, regulatory exposure under frameworks such as the EU Corporate Sustainability Reporting Directive (CSRD) and the SEC's climate disclosure rules, and a clear signal to institutional investors who now screen AI infrastructure sustainability as part of ESG due diligence. Organisations that cannot quantify their AI footprint face an escalating disadvantage in capital markets, government procurement, and talent attraction.\n\nThe model efficiency score of ${effScore != null ? `${fmt(effScore)}/100` : 'the current period'} and licence utilisation rate of ${utilRate != null ? `${pct(utilRate)}` : 'the measured period'} together reveal the financial opportunity embedded in this data. Frontier models (those at the cutting edge of capability) carry an energy and cost premium that is only justified when the task genuinely requires them. When high-powered models are routinely deployed for low-complexity tasks, the result is a compounding inefficiency: higher costs, greater carbon output, and an inflated environmental profile at precisely the moment regulators are scrutinising such metrics most closely.`
 
   const globalNarrativeText = geminiGlobal ||
-    `The global regulatory landscape is shifting with unusual speed. The EU's Corporate Sustainability Reporting Directive entered mandatory compliance for large undertakings in financial year 2024 and cascades to mid-market companies through 2026–2027. Under CSRD, a company's double-materiality assessment must address how its operations affect climate — and how climate-related factors affect the organisation's financial position. AI-related energy and water consumption fall squarely within this scope. The penalty regime is not symbolic: member states are required to enforce fines of up to €10 million or 2.5% of worldwide annual turnover for material non-compliance, whichever is higher. For any organisation with European operations or revenues, the cost of non-measurement now exceeds the cost of measurement by an order of magnitude.\n\nBeyond compliance, the financial incentives for demonstrable AI sustainability are substantial and growing. The United States Inflation Reduction Act provides a 30% investment tax credit for qualifying clean-technology infrastructure. The UK's HMRC R&D tax relief scheme offers SMEs up to 33 pence of relief per pound of qualifying expenditure, with AI efficiency and green-tech projects increasingly qualifying under updated HMRC guidance. Singapore's Enterprise Development Grant and Green Lane programme support sustainable technology adoption with co-funding of up to 70% of eligible project costs. Japan's ¥2 trillion Green Innovation Fund and Germany's KfW sustainability grants offer parallel opportunities for organisations with operations in those jurisdictions. The data captured by GreenLens AI is precisely the audit-trail evidence required to substantiate claims under all of these schemes.`
+    `The global regulatory landscape is shifting with unusual speed. The EU's Corporate Sustainability Reporting Directive entered mandatory compliance for large undertakings in financial year 2024 and cascades to mid-market companies through 2026–2027. Under CSRD, a company's double-materiality assessment must address how its operations affect climate and how climate-related factors affect the organisation's financial position. AI-related energy and water consumption fall squarely within this scope. The penalty regime is not symbolic: member states are required to enforce fines of up to €10 million or 2.5% of worldwide annual turnover for material non-compliance, whichever is higher. For any organisation with European operations or revenues, the cost of non-measurement now exceeds the cost of measurement by an order of magnitude.\n\nBeyond compliance, the financial incentives for demonstrable AI sustainability are substantial and growing. The United States Inflation Reduction Act provides a 30% investment tax credit for qualifying clean-technology infrastructure. The UK's HMRC R&D tax relief scheme offers SMEs up to 33 pence of relief per pound of qualifying expenditure, with AI efficiency and green-tech projects increasingly qualifying under updated HMRC guidance. Singapore's Enterprise Development Grant and Green Lane programme support sustainable technology adoption with co-funding of up to 70% of eligible project costs. Japan's ¥2 trillion Green Innovation Fund and Germany's KfW sustainability grants offer parallel opportunities for organisations with operations in those jurisdictions. The data captured by GreenLens AI is precisely the audit-trail evidence required to substantiate claims under all of these schemes.`
 
   const ExecSummaryPage1 = () =>
     React.createElement(Page, { size: 'A4', style: styles.page },
@@ -838,13 +838,13 @@ function EsgPDF({
         lead: 'What was measured, which systems were connected, and how usage data was collected.',
       }),
       React.createElement(BodyText, null,
-        `GreenLens AI measures organisational AI consumption through direct integration with provider admin APIs — the same interfaces used by IT administrators to manage seats, monitor usage volumes, and review billing. This approach captures usage at the aggregate, organisational level without accessing any individual employee's prompts, outputs, or personal data. The measurement framework covers all major frontier AI providers connected to ${companyName}'s account and normalises raw usage signals — token counts, API call volumes, model identifiers — into standardised energy and environmental metrics using peer-reviewed energy intensity coefficients.`
+        `GreenLens AI measures organisational AI consumption through direct integration with provider admin APIs: the same interfaces used by IT administrators to manage seats, monitor usage volumes, and review billing. This approach captures usage at the aggregate, organisational level without accessing any individual employee's prompts, outputs, or personal data. The measurement framework covers all major frontier AI providers connected to ${companyName}'s account and normalises raw usage signals (token counts, API call volumes, model identifiers) into standardised energy and environmental metrics using peer-reviewed energy intensity coefficients.`
       ),
       React.createElement(BodyText, null,
-        `Data for this report covers the period ${reportingPeriod}${freshness ? `, with the most recent complete day of data being ${freshness}` : ''}. The reporting window is aligned to ${companyName}'s operational calendar to ensure comparability with internal cost-centre reporting and to support the period-on-period benchmarking that underpins trend analysis. Where partial-period data exists — for example, where a provider integration was added mid-period — GreenLens AI applies a clearly documented proration methodology to ensure figures are representative and not artificially deflated by coverage gaps.`
+        `Data for this report covers the period ${reportingPeriod}${freshness ? `, with the most recent complete day of data being ${freshness}` : ''}. The reporting window is aligned to ${companyName}'s operational calendar to ensure comparability with internal cost-centre reporting and to support the period-on-period benchmarking that underpins trend analysis. Where partial-period data exists (for example, where a provider integration was added mid-period) GreenLens AI applies a clearly documented proration methodology to ensure figures are representative and not artificially deflated by coverage gaps.`
       ),
       React.createElement(BodyText, null,
-        `The model inventory below reflects every distinct AI model identifier detected in usage records during the reporting period. Models are classified by capability tier — Frontier (state-of-the-art reasoning and multimodal models), Efficient (optimised models with lower energy overhead), and Specialised (domain-specific or fine-tuned models) — to enable the task-to-capability alignment analysis presented in Section 03. Frontier model usage accounted for ${frontierPct != null ? `${fmt(frontierPct, 1)}%` : 'a significant proportion'} of total consumption during this period.`
+        `The model inventory below reflects every distinct AI model identifier detected in usage records during the reporting period. Models are classified by capability tier: Frontier (state-of-the-art reasoning and multimodal models), Efficient (optimised models with lower energy overhead), and Specialised (domain-specific or fine-tuned models). This classification enables the task-to-capability alignment analysis presented in Section 03. Frontier model usage accounted for ${frontierPct != null ? `${fmt(frontierPct, 1)}%` : 'a significant proportion'} of total consumption during this period.`
       ),
       inventory.length > 0
         ? React.createElement(View, null,
@@ -903,10 +903,10 @@ function EsgPDF({
         `The Model Efficiency Score of ${effScore != null ? `${fmt(effScore)} out of 100` : 'the current period'} is a composite measure that weights three factors: the proportion of tasks assigned to appropriately-capable models, the degree to which token consumption is concentrated in high-energy frontier models relative to the overall task complexity profile, and the rate at which licence seats translate into active, productive usage. A score above 75 is considered strong; below 60 indicates meaningful optimisation headroom that typically translates to both cost reduction and carbon savings without any reduction in AI capability for end users.`
       ),
       React.createElement(BodyText, null,
-        `Frontier AI models — those at the leading edge of capability, such as the most powerful reasoning and multimodal systems — carry a materially higher energy and financial cost per token than efficient-tier models optimised for lower-complexity tasks. When ${frontierPct != null ? `${fmt(frontierPct, 1)}%` : 'a significant share'} of usage volume flows through frontier models, the critical question is whether that capability premium is warranted. GreenLens AI's task clustering algorithm analyses patterns in usage timing, session length, and context-window utilisation to classify each cluster of activity as high-complexity (benefiting from frontier models), medium-complexity (suitable for efficient-tier), or low-complexity (appropriate for lightweight models). The mismatch rate of ${mismatchRate != null ? `${fmt(mismatchRate, 1)}%` : 'the measured period'} represents the share of usage where a frontier model was deployed for a task cluster that analysis suggests would have been served equally well by a less resource-intensive alternative.`
+        `Frontier AI models, those at the leading edge of capability such as the most powerful reasoning and multimodal systems, carry a materially higher energy and financial cost per token than efficient-tier models optimised for lower-complexity tasks. When ${frontierPct != null ? `${fmt(frontierPct, 1)}%` : 'a significant share'} of usage volume flows through frontier models, the critical question is whether that capability premium is warranted. GreenLens AI's task clustering algorithm analyses patterns in usage timing, session length, and context-window utilisation to classify each cluster of activity as high-complexity (benefiting from frontier models), medium-complexity (suitable for efficient-tier), or low-complexity (appropriate for lightweight models). The mismatch rate of ${mismatchRate != null ? `${fmt(mismatchRate, 1)}%` : 'the measured period'} represents the share of usage where a frontier model was deployed for a task cluster that analysis suggests would have been served equally well by a less resource-intensive alternative.`
       ),
       React.createElement(BodyText, null,
-        `The financial and environmental implications of mismatch are not trivial. Frontier models typically consume three to eight times the energy per token of their efficient-tier counterparts, and carry a corresponding cost premium. Reducing the mismatch rate by even 10 percentage points — a readily achievable target through model selection policies and user guidance — can translate to measurable carbon reductions and licence cost savings. The mismatched usage clusters identified in this analysis are documented below and should be reviewed alongside the Strategic Decisions section of this report, where specific intervention recommendations are provided.`
+        `The financial and environmental implications of mismatch are not trivial. Frontier models typically consume three to eight times the energy per token of their efficient-tier counterparts, and carry a corresponding cost premium. Reducing the mismatch rate by even 10 percentage points (a readily achievable target through model selection policies and user guidance) can translate to measurable carbon reductions and licence cost savings. The mismatched usage clusters identified in this analysis are documented below and should be reviewed alongside the Strategic Decisions section of this report, where specific intervention recommendations are provided.`
       ),
       mismatchedClusters.length > 0
         ? React.createElement(View, null,
@@ -985,7 +985,7 @@ function EsgPDF({
       ),
       carbonSavings != null || altCarbon != null
         ? React.createElement(BodyText, null,
-            `The optimisation analysis embedded in this report identifies a potential carbon footprint of ${altCarbon != null ? `${fmt(altCarbon)} kg CO₂e` : 'materially lower levels'} — a reduction of ${carbonSavings != null ? `${fmt(carbonSavings)} kg CO₂e` : 'significant quantities'} achievable through task-appropriate model selection alone, without acquiring any new technology or reducing AI capability. ${waterSavings != null ? `A corresponding water saving of ${fmt(waterSavings)} litres is also achievable. ` : ''}This potential is documented as part of the science-based target-setting baseline that ${companyName} can present to the Science Based Targets initiative (SBTi) and to CDP for A-List consideration.`
+            `The optimisation analysis embedded in this report identifies a potential carbon footprint of ${altCarbon != null ? `${fmt(altCarbon)} kg CO₂e` : 'materially lower levels'}, representing a reduction of ${carbonSavings != null ? `${fmt(carbonSavings)} kg CO₂e` : 'significant quantities'} achievable through task-appropriate model selection alone, without acquiring any new technology or reducing AI capability. ${waterSavings != null ? `A corresponding water saving of ${fmt(waterSavings)} litres is also achievable. ` : ''}This potential is documented as part of the science-based target-setting baseline that ${companyName} can present to the Science Based Targets initiative (SBTi) and to CDP for A-List consideration.`
           )
         : null,
       React.createElement(BodyText, null,
@@ -1051,10 +1051,10 @@ function EsgPDF({
         ),
       ),
       React.createElement(BodyText, null,
-        `AI licence expenditure represents one of the fastest-growing categories of enterprise software spend. For ${companyName}, the data reveals ${totalSeats != null ? `${fmt(totalSeats)} licensed seats` : 'a significant number of licensed seats'} across connected providers, of which ${activeSeats != null ? `${fmt(activeSeats)} (${totalSeats != null && activeSeats != null ? pct((activeSeats / totalSeats) * 100) : 'the majority'})` : 'the active portion'} were used during the reporting period. The ${dormantSeats != null ? `${fmt(dormantSeats)} dormant seats` : 'dormant seats'} identified represent paid capacity generating no value — a pattern that is commonplace in enterprise AI rollouts, where initial broad licensing is followed by uneven adoption across departments.`
+        `AI licence expenditure represents one of the fastest-growing categories of enterprise software spend. For ${companyName}, the data reveals ${totalSeats != null ? `${fmt(totalSeats)} licensed seats` : 'a significant number of licensed seats'} across connected providers, of which ${activeSeats != null ? `${fmt(activeSeats)} (${totalSeats != null && activeSeats != null ? pct((activeSeats / totalSeats) * 100) : 'the majority'})` : 'the active portion'} were used during the reporting period. The ${dormantSeats != null ? `${fmt(dormantSeats)} dormant seats` : 'dormant seats'} identified represent paid capacity generating no value. This pattern is commonplace in enterprise AI rollouts, where initial broad licensing is followed by uneven adoption across departments.`
       ),
       React.createElement(BodyText, null,
-        `The estimated annual licence cost of ${annualCost != null ? fmtCurrency(annualCost) : 'the measured total'} provides the financial baseline against which the optimisation opportunity should be assessed. Rationalising dormant seats at renewal — rather than rolling them forward — creates an immediate, annualised saving of ${annualSavings != null ? fmtCurrency(annualSavings) : 'a material amount'} at current provider pricing. This is not a one-time benefit: dormant seat rationalisation compounded with task-appropriate model selection typically yields cost reductions of 15–35% versus unmanaged AI spend, based on GreenLens AI's analysis across comparable organisations.`
+        `The estimated annual licence cost of ${annualCost != null ? fmtCurrency(annualCost) : 'the measured total'} provides the financial baseline against which the optimisation opportunity should be assessed. Rationalising dormant seats at renewal, rather than rolling them forward, creates an immediate annualised saving of ${annualSavings != null ? fmtCurrency(annualSavings) : 'a material amount'} at current provider pricing. This is not a one-time benefit: dormant seat rationalisation compounded with task-appropriate model selection typically yields cost reductions of 15–35% versus unmanaged AI spend, based on GreenLens AI's analysis across comparable organisations.`
       ),
       React.createElement(BodyText, null,
         `From an ESG reporting perspective, licence utilisation data serves a secondary but important function: it enables the separation of licensed capacity from actual consumption in environmental calculations. An organisation that holds 500 seats but actively uses 200 should not be attributed the full environmental footprint of 500 users. This distinction is increasingly material as carbon accounting standards evolve and as Scope 3 AI emissions begin to feature in supply chain due diligence questionnaires from major enterprise customers.`
@@ -1113,7 +1113,7 @@ function EsgPDF({
   const defaultIncentives = [
     { name: 'EU CSRD — Mandatory Compliance', jurisdiction: 'European Union', description: 'The Corporate Sustainability Reporting Directive is mandatory for all large undertakings (>250 employees or €40M revenue) from FY2024, cascading to mid-market from FY2025. Double materiality assessment required. Non-compliance penalties: up to €10M or 2.5% of worldwide annual turnover (whichever is higher) per member state enforcement.', value: 'Penalty avoidance up to €10M / 2.5% turnover' },
     { name: 'EU AI Act — Environmental Provisions', jurisdiction: 'European Union', description: 'High-risk AI systems must document and disclose environmental performance data including energy consumption and carbon impact. GreenLens AI measurement data constitutes the required technical documentation.', value: 'Compliance evidence for regulatory clearance' },
-    { name: 'US Inflation Reduction Act (IRA) — Investment Tax Credit', jurisdiction: 'United States', description: '30% investment tax credit (ITC) available for qualifying clean technology infrastructure, including energy-efficient computing and AI infrastructure upgrades. Requires documented baseline and improvement metrics — precisely what GreenLens AI provides.', value: '30% ITC on qualifying capital expenditure' },
+    { name: 'US Inflation Reduction Act (IRA) — Investment Tax Credit', jurisdiction: 'United States', description: '30% investment tax credit (ITC) available for qualifying clean technology infrastructure, including energy-efficient computing and AI infrastructure upgrades. Requires documented baseline and improvement metrics: precisely what GreenLens AI provides.', value: '30% ITC on qualifying capital expenditure' },
     { name: 'UK HMRC R&D Tax Relief', jurisdiction: 'United Kingdom', description: 'SMEs can claim up to 33p relief per £1 of qualifying R&D expenditure. AI efficiency and sustainable technology projects increasingly qualify under updated HMRC guidance. Large companies can claim 20% RDEC. FCA ESG disclosure requirements apply to financial services firms with immediate effect.', value: 'Up to 33% relief for SMEs; 20% RDEC for large companies' },
     { name: 'Singapore MAS ESG Framework & Enterprise Development Grant', jurisdiction: 'Singapore', description: "MAS ESG disclosure framework requires financial institutions to disclose material sustainability risks. Enterprise Development Grant (EDG) co-funds up to 70% of eligible sustainability and technology adoption costs. Singapore's Green Lane programme provides expedited approval for sustainable technology deployments.", value: 'Up to 70% co-funding via EDG' },
     { name: 'Japan Green Innovation Fund & METI GX Strategy', jurisdiction: 'Japan', description: "Japan's ¥2 trillion (approx. $14B) Green Innovation Fund supports organisations demonstrating measurable sustainability progress as part of METI's GX (Green Transformation) strategy. Carbon-neutral 2050 commitment creates mandatory disclosure pathway for all major listed entities from 2025.", value: 'Grant access via METI GX programme' },
@@ -1133,13 +1133,13 @@ function EsgPDF({
         lead: 'International grants, tax credits, compliance obligations, and ESG index inclusion benefits.',
       }),
       React.createElement(BodyText, null,
-        `The financial case for AI environmental measurement extends well beyond cost avoidance. Across every major economic bloc, governments have constructed a framework of financial incentives designed to accelerate corporate sustainability action — incentives that require precisely the kind of objective, auditable baseline data that GreenLens AI produces. At the same time, the penalty architecture for non-compliance has grown materially: the EU's CSRD regime now imposes fines of up to €10 million or 2.5% of worldwide annual turnover for material reporting failures, whichever is higher. For any organisation with European operations or customer relationships, the cost-benefit calculation has fundamentally shifted.`
+        `The financial case for AI environmental measurement extends well beyond cost avoidance. Across every major economic bloc, governments have constructed a framework of financial incentives designed to accelerate corporate sustainability action. These incentives require precisely the kind of objective, auditable baseline data that GreenLens AI produces. At the same time, the penalty architecture for non-compliance has grown materially: the EU's CSRD regime now imposes fines of up to €10 million or 2.5% of worldwide annual turnover for material reporting failures, whichever is higher. For any organisation with European operations or customer relationships, the cost-benefit calculation has fundamentally shifted.`
       ),
       React.createElement(BodyText, null,
         `Beyond direct grants and tax credits, ESG index inclusion creates a structural financial benefit that compounds over time. Membership of the FTSE4Good Index, MSCI ESG Leaders, or the Dow Jones Sustainability Index (DJSI) demonstrably reduces the cost of capital: sustainability-linked loans from major lenders now offer interest rate step-downs of 25–100 basis points for borrowers who meet documented ESG improvement targets, and institutional investors managing an estimated $120 trillion in assets under management screen ESG credentials as a precondition of investment. The data captured by GreenLens AI is the currency of this market.`
       ),
       React.createElement(BodyText, null,
-        `Procurement represents an underappreciated dimension of the incentive landscape. The EU Sustainable Finance Action Plan requires large public contracting authorities and corporates subject to CSRD to cascade sustainability criteria into their supply chains. Organisations that cannot demonstrate documented AI environmental credentials risk exclusion from procurement processes for enterprise clients operating under these obligations — a market access risk that translates directly to revenue exposure. Conversely, organisations with verified sustainability data can differentiate on ESG credentials in competitive tender situations, an advantage that is quantifiable and durable.`
+        `Procurement represents an underappreciated dimension of the incentive landscape. The EU Sustainable Finance Action Plan requires large public contracting authorities and corporates subject to CSRD to cascade sustainability criteria into their supply chains. Organisations that cannot demonstrate documented AI environmental credentials risk exclusion from procurement processes for enterprise clients operating under these obligations, a market access risk that translates directly to revenue exposure. Conversely, organisations with verified sustainability data can differentiate on ESG credentials in competitive tender situations, an advantage that is quantifiable and durable.`
       ),
       ...allIncentives.slice(0, 10).map((item: unknown, i: number) => {
         const inc = item as Json
@@ -1176,7 +1176,7 @@ function EsgPDF({
         title: 'Hype Cycle & Benchmark Analysis',
         lead: 'Gartner positioning, first-mover advantage, and peer benchmarking for AI environmental data.',
       }),
-      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 8 } }, 'Gartner Hype Cycle — Current GenAI / LLM Position'),
+      React.createElement(Text, { style: { ...styles.bodyMuted, marginBottom: 8 } }, 'Gartner Hype Cycle: Current GenAI / LLM Position'),
 
       // ── Hype Cycle SVG chart ─────────────────────────────────────────────────
       // Viewbox: 500 × 220  (points: x from 0-500, y from 0-200 inverted)
@@ -1184,72 +1184,69 @@ function EsgPDF({
       //        → Slope (x=390,y=80) → Plateau (x=480,y=95)
       React.createElement(View, { style: { marginBottom: 14, alignItems: 'center' } },
         React.createElement(Svg as unknown as React.ComponentType<{ width: number; height: number; viewBox: string; style?: object }>,
-          { width: 450, height: 200, viewBox: '0 0 500 220' },
+          { width: 450, height: 220, viewBox: '0 0 500 244' },
 
           // Background fill
           React.createElement(Path as unknown as React.ComponentType<{ d: string; fill: string; stroke?: string }>,
-            { d: 'M0 0 H500 V220 H0 Z', fill: BG_CARD }
+            { d: 'M0 0 H500 V244 H0 Z', fill: BG_CARD }
           ),
 
-          // Axis lines
+          // Y axis
           React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number }>,
-            { x1: 40, y1: 10, x2: 40, y2: 180, stroke: MUTED, strokeWidth: 1 }
+            { x1: 44, y1: 12, x2: 44, y2: 175, stroke: MUTED, strokeWidth: 1 }
           ),
+          // X axis
           React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number }>,
-            { x1: 40, y1: 180, x2: 490, y2: 180, stroke: MUTED, strokeWidth: 1 }
-          ),
-
-          // Axis labels
-          React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string; textAnchor?: string }>,
-            { x: 22, y: 100, fontSize: 8, fill: MUTED, textAnchor: 'middle' },
-            'VISIBILITY'
-          ),
-          React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string; textAnchor?: string }>,
-            { x: 265, y: 197, fontSize: 8, fill: MUTED, textAnchor: 'middle' },
-            'TIME'
+            { x1: 44, y1: 175, x2: 488, y2: 175, stroke: MUTED, strokeWidth: 1 }
           ),
 
           // Hype cycle curve (cubic bezier)
+          // Stages: Trigger(x=70) Peak(x=160,y=18) Trough(x=270,y=158) Slope(x=380,y=72) Plateau(x=468,y=88)
           React.createElement(Path as unknown as React.ComponentType<{ d: string; fill: string; stroke: string; strokeWidth: number }>,
             {
-              d: 'M 55 160 C 80 155 110 20 160 18 C 200 16 230 140 280 165 C 320 183 355 75 390 72 C 425 69 455 88 480 90',
+              d: 'M 60 155 C 85 150 115 22 162 18 C 198 15 228 138 270 158 C 312 175 348 72 382 70 C 418 68 448 85 468 87',
               fill: 'none',
               stroke: '#c0392b',
               strokeWidth: 2.5,
             }
           ),
 
-          // Stage label lines (vertical dashes at key x positions)
-          ...[55, 160, 280, 390, 480].map((x, i) =>
-            React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; strokeDasharray?: string }>,
-              { key: `vl-${i}`, x1: x, y1: 178, x2: x, y2: 185, stroke: MUTED, strokeWidth: 1 }
+          // Tick marks below axis for each stage
+          ...[70, 162, 270, 382, 468].map((x, i) =>
+            React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number }>,
+              { key: `tk-${i}`, x1: x, y1: 175, x2: x, y2: 181, stroke: MUTED, strokeWidth: 1 }
             )
           ),
 
-          // Stage labels below axis
+          // Stage labels — two Text elements per stage (line1 at y=191, line2 at y=202)
+          // Using short labels to prevent overlap across 5 stages in ~420px of x space
           ...[
-            { x: 55,  label: 'Technology\nTrigger' },
-            { x: 160, label: 'Peak of\nExpectations' },
-            { x: 280, label: 'Trough of\nDisillusionment' },
-            { x: 390, label: 'Slope of\nEnlightenment' },
-            { x: 480, label: 'Plateau of\nProductivity' },
-          ].map(({ x, label }, i) =>
+            { x: 70,  l1: 'Technology', l2: 'Trigger',         green: false },
+            { x: 162, l1: 'Peak of',    l2: 'Expectations',    green: false },
+            { x: 270, l1: 'Trough of',  l2: 'Disillusionment', green: true  },
+            { x: 382, l1: 'Slope of',   l2: 'Enlightenment',   green: false },
+            { x: 468, l1: 'Plateau of', l2: 'Productivity',    green: false },
+          ].flatMap(({ x, l1, l2, green }, i) => [
             React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string; textAnchor?: string }>,
-              { key: `sl-${i}`, x, y: 193, fontSize: 6, fill: i === 2 ? GREEN : MUTED, textAnchor: 'middle' },
-              label
-            )
-          ),
+              { key: `la-${i}`, x, y: 191, fontSize: 5.5, fill: green ? GREEN : MUTED, textAnchor: 'middle' },
+              l1
+            ),
+            React.createElement(Text as unknown as React.ComponentType<{ key?: string; x: number; y: number; fontSize: number; fill: string; textAnchor?: string }>,
+              { key: `lb-${i}`, x, y: 201, fontSize: 5.5, fill: green ? GREEN : MUTED, textAnchor: 'middle' },
+              l2
+            ),
+          ]),
 
-          // "WE ARE HERE" marker at Trough (x=280, y=165)
+          // "WE ARE HERE" marker at Trough (x=270, y=158)
           React.createElement(Circle as unknown as React.ComponentType<{ cx: number; cy: number; r: number; fill: string; stroke: string; strokeWidth: number }>,
-            { cx: 280, cy: 165, r: 5, fill: GREEN, stroke: WHITE, strokeWidth: 1.5 }
+            { cx: 270, cy: 158, r: 5, fill: GREEN, stroke: WHITE, strokeWidth: 1.5 }
           ),
           React.createElement(Line as unknown as React.ComponentType<{ x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth: number; strokeDasharray?: string }>,
-            { x1: 280, y1: 159, x2: 280, y2: 135, stroke: GREEN, strokeWidth: 1, strokeDasharray: '3 2' }
+            { x1: 270, y1: 152, x2: 270, y2: 128, stroke: GREEN, strokeWidth: 1, strokeDasharray: '3 2' }
           ),
           React.createElement(Text as unknown as React.ComponentType<{ x: number; y: number; fontSize: number; fill: string; fontWeight?: string; textAnchor?: string }>,
-            { x: 280, y: 130, fontSize: 7, fill: GREEN, fontWeight: 'bold', textAnchor: 'middle' },
-            '▼ WE ARE HERE'
+            { x: 270, y: 124, fontSize: 6.5, fill: GREEN, fontWeight: 'bold', textAnchor: 'middle' },
+            'WE ARE HERE'
           ),
         )
       ),
@@ -1259,7 +1256,7 @@ function EsgPDF({
         ...[
           { label: 'Technology Trigger', active: false },
           { label: 'Peak of Inflated Expectations', active: false },
-          { label: 'Trough of Disillusionment ◀ NOW', active: true },
+          { label: 'Trough of Disillusionment', active: true },
           { label: 'Slope of Enlightenment', active: false },
           { label: 'Plateau of Productivity', active: false },
         ].map(stage =>
@@ -1269,19 +1266,16 @@ function EsgPDF({
         ),
       ),
       React.createElement(BodyText, null,
-        `The Gartner Hype Cycle is one of the most useful frameworks available for understanding where a technology sits in the cycle of market expectations versus demonstrated value. The five stages — Technology Trigger, Peak of Inflated Expectations, Trough of Disillusionment, Slope of Enlightenment, and Plateau of Productivity — describe a consistent pattern that has characterised every major technology wave from the internet to cloud computing to mobile. Understanding which stage applies to generative AI today is not an academic exercise: it directly determines the strategic value of the data ${companyName} is now collecting.`
+        `Generative AI and large language models followed the classic Hype Cycle pattern with unusual speed. The Technology Trigger arrived with GPT-3 in 2020. The Peak of Inflated Expectations, characterised by exponential media coverage, stratospheric valuations, and sweeping productivity promises, was reached by late 2022 and maintained through 2023. By 2024–2026, the market has moved firmly into the Trough of Disillusionment. This phase is characterised not by failure but by recalibration: enterprises are scrutinising AI ROI with the same rigour applied to any major capital investment. Productivity claims that were accepted on faith in 2022 now require evidence.`
       ),
       React.createElement(BodyText, null,
-        `Generative AI and large language models followed the classic pattern with unusual speed. The Technology Trigger arrived with the release of GPT-3 in 2020; the Peak of Inflated Expectations — characterised by exponential media coverage, stratospheric valuations, and sweeping productivity promises — was reached by late 2022 and maintained through 2023. By 2024–2026, the market has moved firmly into the Trough of Disillusionment. This phase is characterised not by failure, but by recalibration: enterprises are scrutinising AI ROI with the same rigour they apply to any major capital investment. Cost scrutiny is intensifying — hyperscaler AI infrastructure costs, licence expenditure, and the energy overhead of inference workloads are all under the microscope. Productivity claims that were accepted on faith in 2022 now require evidence.`
+        `The Trough of Disillusionment is not a signal to retreat from AI investment. It is precisely the moment when the discipline of measurement becomes a competitive differentiator. Organisations that begin collecting objective, provider-agnostic environmental and efficiency data during the Trough will arrive at the Slope of Enlightenment (estimated 2026–2028) with a multi-year baseline enabling genuinely evidence-based decisions. They will be able to demonstrate consistent improvement trajectories to regulators and investors, substantiate ROI calculations with actual cost and carbon data, and position AI investment within a credible sustainability narrative. Organisations that wait until the Slope is visible to begin measurement will face the same disadvantage as those who deferred cloud cost optimisation until hyperscaler bills had already compounded.`
       ),
       React.createElement(BodyText, null,
-        `The Trough of Disillusionment is not a signal to retreat from AI investment — it is precisely the moment when the discipline of measurement becomes a competitive differentiator. Organisations that begin collecting objective, provider-agnostic environmental and efficiency data during the Trough will arrive at the Slope of Enlightenment (estimated 2026–2028) with a multi-year baseline that enables genuinely evidence-based optimisation decisions. They will be able to demonstrate consistent improvement trajectories to regulators and investors, substantiate ROI calculations with actual cost and carbon data, and position AI investment within a credible sustainability narrative. Organisations that wait until the Slope is visible to begin measurement will face the same disadvantage as those who deferred cloud cost optimisation until hyperscaler bills had already compounded.`
+        `${companyName}'s current benchmark position: carbon efficiency at the ${carbonPct != null ? `${fmt(carbonPct)}th percentile` : 'measured percentile'} relative to peer organisations, with a ${trendDir || 'current'} trend direction${anomaly === true ? ' and a statistical anomaly detected in usage patterns that warrants investigation' : ''}. This provides the objective foundation for a first-mover positioning strategy. ${hypeCtxBench ? hypeCtxBench : 'First-mover advantage in AI environmental data is time-limited: as CSRD compliance requirements cascade through the mid-market, the window in which this data constitutes a differentiator rather than a baseline expectation will close. The organisations that establish measurement discipline now will define the benchmark that others are measured against.'}`
       ),
       React.createElement(BodyText, null,
-        `${companyName}'s current benchmark position — carbon efficiency at the ${carbonPct != null ? `${fmt(carbonPct)}th percentile` : 'measured percentile'} relative to peer organisations, with a ${trendDir || 'current'} trend direction${anomaly === true ? ' and a statistical anomaly detected in usage patterns that warrants investigation' : ''} — provides the objective foundation for this positioning strategy. ${hypeCtxBench ? hypeCtxBench : 'First-mover advantage in AI environmental data is time-limited: as CSRD compliance requirements cascade through the mid-market, the window in which this data constitutes a differentiator rather than a baseline expectation will close. The organisations that establish measurement discipline now will define the benchmark that others are measured against.'}`
-      ),
-      React.createElement(BodyText, null,
-        `This data enables four specific strategic capabilities that will become increasingly valuable on the Slope of Enlightenment: accurate, auditable ROI calculation for AI investment (separating value-generating from wasteful spend); regulatory compliance readiness for CSRD, IFRS S2, SEC climate rules, and their successors; evidence-based model optimisation that reduces environmental impact without reducing capability; and a documented sustainability narrative for institutional investors, enterprise procurement teams, and talent markets that increasingly screen on ESG credentials. Each of these capabilities compounds in value as the market moves toward the Plateau of Productivity.`
+        `This data enables four strategic capabilities that will become increasingly valuable on the Slope of Enlightenment: accurate, auditable ROI calculation for AI investment; regulatory compliance readiness for CSRD, IFRS S2, and SEC climate rules; evidence-based model optimisation that reduces environmental impact without reducing capability; and a documented sustainability narrative for institutional investors, enterprise procurement teams, and talent markets that screen on ESG credentials. Each of these capabilities compounds in value as the market moves toward the Plateau of Productivity.`
       ),
       React.createElement(Footer, null),
     )
@@ -1311,7 +1305,7 @@ function EsgPDF({
         `The following strategic recommendations are derived directly from ${companyName}'s measured data and are calibrated to deliver the maximum combined benefit across three dimensions: financial return (cost reduction, grant capture, regulatory penalty avoidance), environmental improvement (carbon and water reduction), and strategic positioning (regulatory readiness, ESG index eligibility, procurement differentiation). Each recommendation has been assessed for feasibility within a twelve-month implementation horizon and does not require additional technology procurement beyond the GreenLens AI platform.`
       ),
       React.createElement(BodyText, null,
-        `The recommendations are presented in priority order, weighted by the magnitude of financial impact and the urgency of any associated compliance deadlines. Leadership teams are advised to assign executive ownership to each recommendation and to establish a measurement cadence — GreenLens AI's quarterly reporting cycle is designed to provide the ongoing data required to track implementation progress and demonstrate year-on-year improvement to external stakeholders.`
+        `The recommendations are presented in priority order, weighted by the magnitude of financial impact and the urgency of any associated compliance deadlines. Leadership teams are advised to assign executive ownership to each recommendation and to establish a measurement cadence. GreenLens AI's quarterly reporting cycle is designed to provide the ongoing data required to track implementation progress and demonstrate year-on-year improvement to external stakeholders.`
       ),
       ...allDecisions.slice(0, 6).map((item: unknown, i: number) => {
         const d = item as Json
