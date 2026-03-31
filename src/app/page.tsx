@@ -21,9 +21,18 @@ import ExecutiveReport from '@/components/landing/ExecutiveReport';
 
 const RadarVisual = memo(function RadarVisual() {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="relative flex justify-center">
-        <svg viewBox="0 0 300 300" className="w-200 h-200">
+    <div className="mt-10 flex w-full flex-col items-center gap-3 px-6 sm:px-10 lg:mt-0 lg:items-end lg:px-12 xl:px-20">
+      <div
+        className="relative flex shrink-0 justify-center"
+        style={{
+          width: 'clamp(19.5rem, 38vw, 29rem)',
+          height: 'clamp(19.5rem, 38vw, 29rem)',
+        }}
+      >
+        <svg
+          viewBox="0 0 300 300"
+          className="block h-full w-full"
+        >
           <defs>
             <linearGradient id="sweepGradient" x1="150" y1="150" x2="274" y2="78" gradientUnits="userSpaceOnUse">
               <stop offset="0%" stopColor="#86efac" stopOpacity="0" />
@@ -73,15 +82,15 @@ const RadarVisual = memo(function RadarVisual() {
           </g>
         </svg>
 
-        <div className="absolute bottom-[14%] left-[2%] bg-white border border-[#e5e5e5] rounded-lg p-6 card-hover w-80">
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-[#888] text-xs font-mono tracking-widest">SYSTEM_STATUS</span>
-            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+        <div className="absolute bottom-[13%] left-[1%] w-56 rounded-lg border border-[#e5e5e5] bg-white p-3.5 card-hover sm:w-64 lg:w-72">
+          <div className="mb-2.5 flex items-center gap-2.5">
+            <span className="text-[11px] font-mono tracking-[0.24em] text-[#888]">SYSTEM_STATUS</span>
+            <span className="h-2 w-2 rounded-full bg-red-400 animate-pulse" />
           </div>
-          <div className="w-full h-1 bg-[#f0f0f0] rounded-full overflow-hidden mb-3">
+          <div className="mb-2.5 h-1 w-full overflow-hidden rounded-full bg-[#f0f0f0]">
             <div className="h-full bg-red-400 rounded-full" style={{ width: '15%' }} />
           </div>
-          <p className="text-xs font-mono">
+          <p className="text-[11px] font-mono sm:text-xs">
             <span className="text-[#888]">Visibility Index: </span>
             <span className="text-red-500 font-semibold">CRITICAL</span>
           </p>
@@ -202,11 +211,11 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative hero-nature-bg overflow-hidden min-h-screen flex flex-col justify-center">
-        <div className="flex flex-col lg:flex-row items-center gap-8 w-full pt-16 lg:pt-0">
+        <div className="flex w-full flex-col items-center gap-8 pt-16 lg:flex-row lg:pt-0 xl:gap-10">
           {/* Left: Text */}
-          <div className="w-full lg:w-[48%] px-6 sm:px-10 lg:pl-28 lg:pr-0 shrink-0">
-            <h1 className="text-5xl sm:text-6xl lg:text-[5.75rem] font-medium tracking-tight leading-[1.1] mb-10 fade-in-up text-white">
-              Measure the environmental cost<br />of your enterprise AI
+          <div className="w-full shrink-0 px-6 sm:px-10 lg:w-[36%] lg:pl-28 lg:pr-0 xl:w-[33%]">
+            <h1 className="mb-7 text-[1.92rem] font-medium tracking-tight leading-[1.03] fade-in-up text-white sm:text-[2.32rem] lg:text-[2.82rem] xl:text-[3.08rem]">
+              Measure the full<br />environmental cost of your<br />enterprise AI
             </h1>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-start justify-center lg:justify-start gap-2 sm:gap-3">
@@ -227,8 +236,8 @@ export default function Home() {
           </div>
 
           {/* Right: Dashboard mockup — flush to right edge */}
-          <div className="w-full lg:flex-1 fade-in-up animation-delay-200 flex justify-center items-center px-6 sm:pr-12 lg:pl-0 lg:pr-12">
-            <div className="dashboard-shadow rounded-tl-lg rounded-tr-lg overflow-hidden border-t border-l border-r border-white/10 w-full">
+          <div className="fade-in-up animation-delay-200 flex w-full items-center justify-center px-6 sm:px-10 lg:flex-1 lg:justify-end lg:pl-8 lg:pr-12 xl:pr-16">
+            <div className="dashboard-shadow w-full max-w-[34rem] overflow-hidden rounded-tl-lg rounded-tr-lg border-t border-l border-r border-white/10 sm:max-w-[38rem] lg:max-w-[44rem] xl:max-w-[48rem] 2xl:max-w-[52rem]">
               <ExecutiveReport />
             </div>
           </div>
@@ -241,14 +250,14 @@ export default function Home() {
 
           {/* Phase 2: actual content (bottom layer) */}
           <div className="bg-white" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
-            <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
+            <div className="grid w-full items-center gap-0 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
 
               {/* Left: Text */}
-              <div className="px-6 sm:px-10 lg:px-20">
-                <p className="text-[#236b42] text-lg font-medium tracking-widest uppercase mb-6">
+              <div className="px-6 sm:px-10 lg:pl-20 lg:pr-6 xl:pl-24 xl:pr-10">
+                <p className="mb-5 text-sm font-medium tracking-widest text-[#236b42] uppercase sm:text-base">
                   The Visibility Gap
                 </p>
-                <h2 className="text-5xl sm:text-6xl font-medium tracking-tight mb-10 text-[#1a1a1a] leading-[1.15]">
+                <h2 className="mb-7 text-[2.15rem] font-medium tracking-tight text-[#1a1a1a] leading-[1.06] sm:text-[2.55rem] lg:text-[2.8rem] xl:text-[3.05rem]">
                   Leadership teams are making AI investment decisions in the dark.
                   <span className="highlight-cycle mt-4" style={{ animationDelay: '0s' }}>No carbon data.</span>
                   <span className="highlight-cycle" style={{ animationDelay: '2s' }}>No water metrics.</span>
@@ -257,7 +266,7 @@ export default function Home() {
 
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-2 border border-[#236b42] text-[#236b42] hover:bg-[#236b42] hover:text-white transition-colors px-6 py-3 rounded-md text-sm font-medium"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#236b42] px-5 py-2.5 text-sm font-medium text-[#236b42] transition-colors hover:bg-[#236b42] hover:text-white"
                 >
                   Request a demo <ArrowRight className="w-4 h-4" />
                 </Link>
@@ -283,13 +292,13 @@ export default function Home() {
               zIndex: 10,
             }}
           >
-            <div className="grid lg:grid-cols-2 gap-0 items-center w-full">
-              <div className="px-6 sm:px-10 lg:px-20">
-                <p className="text-lg font-medium tracking-widest uppercase mb-6 invisible">
+            <div className="grid w-full items-center gap-0 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="px-6 sm:px-10 lg:pl-20 lg:pr-6 xl:pl-24 xl:pr-10">
+                <p className="mb-5 text-sm font-medium tracking-widest uppercase invisible sm:text-base">
                   The Visibility Gap
                 </p>
                 <h2
-                  className="text-5xl sm:text-6xl font-medium tracking-tight leading-[1.15] mb-10"
+                  className="mb-7 text-[2.15rem] font-medium tracking-tight leading-[1.06] sm:text-[2.55rem] lg:text-[2.8rem] xl:text-[3.05rem]"
                   style={{ color: overlayDark ? '#fff' : '#1a1a1a' }}
                 >
                   {textBeforeDark}
