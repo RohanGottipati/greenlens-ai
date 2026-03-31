@@ -1,11 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
+import { Suspense } from 'react'
+import { createClient } from '@/lib/supabase/server'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import {
   DashboardBadge,
   DashboardBarRow,
   DashboardEmptyState,
-  DashboardFilterBar,
   DashboardHeader,
   DashboardMetaPill,
   DashboardMiniStat,
@@ -19,11 +19,13 @@ import {
   formatPercent,
   titleize,
 } from '@/components/dashboard/DashboardPrimitives'
+import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
 import MitigationCard from '@/components/dashboard/MitigationCard'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import { getSectionAvailability } from '@/lib/reports/report-availability'
 import {
   AlertTriangle,
@@ -33,6 +35,23 @@ import {
 } from 'lucide-react'
 
 const clusterLabels: Record<string, { label: string; tone: 'blue' | 'amber' | 'green' | 'slate'; description: string }> = {
+  // current values (from classifyBehavior in usage-analyst.ts)
+  high_frequency_low_token: {
+    label: 'Classification & Routing',
+    tone: 'blue',
+    description: 'High volume, low tokens — small models appropriate',
+  },
+  uniform: {
+    label: 'Generation & Drafting',
+    tone: 'green',
+    description: 'Medium volume, medium tokens — mid-tier models',
+  },
+  low_frequency_high_token: {
+    label: 'Analysis & Reasoning',
+    tone: 'amber',
+    description: 'Low volume, high tokens — frontier models justified',
+  },
+  // legacy fallback (older task-clustering naming convention)
   classification_routing: {
     label: 'Classification & Routing',
     tone: 'blue',
@@ -51,16 +70,22 @@ const clusterLabels: Record<string, { label: string; tone: 'blue' | 'amber' | 'g
 }
 
 interface ModelsPageProps {
-  searchParams?: Promise<{ reportId?: string }>
+  searchParams?: Promise<{ reportId?: string; provider?: string; cluster?: string }>
 }
 
 export default async function ModelsPage({ searchParams }: ModelsPageProps) {
-  const requestedReportId = (await searchParams)?.reportId ?? null
+  const params = await searchParams
+  const requestedReportId = params?.reportId ?? null
+  const providerFilter = params?.provider ?? 'all'
+  const clusterFilter = params?.cluster ?? 'all'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -75,10 +100,17 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
     ?? []
 
   // model_inventory is an array of NormalizedUsage objects from the usage analyst
+  // Normalize behaviorCluster to 'uniform' if missing (older reports may not have this field)
   const modelInventory: {
     model: string; provider: string; totalInputTokens: number;
     totalOutputTokens: number; totalRequests: number; behaviorCluster: string
-  }[] = modelAnalysis?.model_inventory ?? []
+  }[] = (modelAnalysis?.model_inventory ?? []).map((item: {
+    model: string; provider: string; totalInputTokens: number;
+    totalOutputTokens: number; totalRequests: number; behaviorCluster?: string
+  }) => ({
+    ...item,
+    behaviorCluster: item.behaviorCluster ?? 'uniform',
+  }))
 
   // task_clustering comes from the stat analysis module
   const taskClusters: { model: string; task_category: string; appropriate_model_class: string }[] =
@@ -123,6 +155,7 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
       requestShare: totalRequests > 0 ? (item.requests / totalRequests) * 100 : 0,
     }))
     .sort((a, b) => b.requests - a.requests)
+  const uniqueClusters = [...new Set(modelInventory.map((m) => m.behaviorCluster))]
   const topModels = [...modelInventory]
     .map((item) => ({
       ...item,
@@ -133,6 +166,21 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
     }))
     .sort((a, b) => b.totalRequests - a.totalRequests)
     .slice(0, 6)
+  const filteredTopModels = [...modelInventory]
+    .map((item) => ({
+      ...item,
+      totalTokens: (item.totalInputTokens ?? 0) + (item.totalOutputTokens ?? 0),
+      avgTokensPerRequest: item.totalRequests > 0
+        ? ((item.totalInputTokens ?? 0) + (item.totalOutputTokens ?? 0)) / item.totalRequests
+        : 0,
+    }))
+    .filter((m) => providerFilter === 'all' || m.provider === providerFilter)
+    .filter((m) => clusterFilter === 'all' || m.behaviorCluster === clusterFilter)
+    .sort((a, b) => b.totalRequests - a.totalRequests)
+    .slice(0, 6)
+  const filteredModelInventory = modelInventory
+    .filter((m) => providerFilter === 'all' || m.provider === providerFilter)
+    .filter((m) => clusterFilter === 'all' || m.behaviorCluster === clusterFilter)
   const highestIntensityModel = [...topModels].sort((a, b) => b.avgTokensPerRequest - a.avgTokensPerRequest)[0] ?? null
   const rightSizeCandidates: {
     model: string
@@ -172,14 +220,40 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
 
-        <DashboardFilterBar
-          items={[
-            { label: 'Page', value: 'Model Efficiency' },
-            { label: 'Portfolio', value: providerSummary.length > 0 ? `${providerSummary.length} providers` : 'Awaiting data' },
-            { label: 'Optimization Focus', value: mismatchRate > 0 ? 'Right-Sizing' : 'Monitoring' },
-            { label: 'Time Period', value: report.reporting_period },
-          ]}
-        />
+        <Suspense>
+          <div className="grid gap-3 md:grid-cols-3">
+            <DashboardFilterSelect
+              label="Provider"
+              paramKey="provider"
+              value={providerFilter}
+              options={[
+                { label: 'All Providers', value: 'all' },
+                ...providerSummary.map((p) => ({ label: p.provider, value: p.provider })),
+              ]}
+            />
+            <DashboardFilterSelect
+              label="Cluster"
+              paramKey="cluster"
+              value={clusterFilter}
+              options={[
+                { label: 'All Clusters', value: 'all' },
+                ...uniqueClusters.map((c) => ({
+                  label: clusterLabels[c]?.label ?? titleize(c),
+                  value: c,
+                })),
+              ]}
+            />
+            <DashboardFilterSelect
+              label="Period"
+              paramKey="reportId"
+              value={requestedReportId ?? 'all'}
+              options={[
+                { label: `${report.reporting_period} (latest)`, value: 'all' },
+                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+              ]}
+            />
+          </div>
+        </Suspense>
 
         {!modelEfficiencyAvailable && (
           <SectionAvailabilityNotice
@@ -291,17 +365,17 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <DashboardBadge tone={cluster.tone}>{cluster.label}</DashboardBadge>
-                            <p className="mt-3 text-sm leading-6 text-[#60726b]">{cluster.description}</p>
+                            <p className="mt-3 text-sm leading-6 text-[#2e4a40]">{cluster.description}</p>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-xl font-semibold text-[#152820]">{cluster.count}</p>
-                            <p className="text-xs text-[#9aa7a0]">{formatPercent(cluster.share, 0)} of classified models</p>
+                            <p className="text-xs font-medium text-[#5a6e66]">{formatPercent(cluster.share, 0)} of classified models</p>
                           </div>
                         </div>
                         <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e4ece7]">
                           <div className="h-full rounded-full bg-[#38b76a]" style={{ width: `${Math.max(8, cluster.share)}%` }} />
                         </div>
-                        <p className="mt-2 text-xs text-[#7f8f88]">
+                        <p className="mt-2 text-xs font-medium text-[#4a5e56]">
                           Recommended model class: {titleize(cluster.recommendedClass)}
                         </p>
                       </div>
@@ -322,9 +396,9 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                 subtitle="The models consuming the largest share of request volume and where token intensity may be pushing costs upward."
                 badge={<DashboardMetaPill>{formatCompactNumber(totalRequests, 1)} requests tracked</DashboardMetaPill>}
               >
-                {topModels.length > 0 ? (
+                {filteredTopModels.length > 0 ? (
                   <div className="space-y-3">
-                    {topModels.map((model) => (
+                    {filteredTopModels.map((model) => (
                       <DashboardBarRow
                         key={model.model}
                         label={model.model}
@@ -336,8 +410,8 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                   </div>
                 ) : (
                   <DashboardEmptyState
-                    title="No portfolio volume breakdown yet"
-                    message="Once usage records are ingested, this view will highlight your highest-load models."
+                    title="No models for selected provider"
+                    message="No model usage data matches the current provider filter."
                   />
                 )}
               </DashboardPanel>
@@ -356,12 +430,12 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                           <div className="flex items-start justify-between gap-4">
                             <div>
                               <p className="font-medium text-[#152820]">{candidate.model}</p>
-                              <p className="mt-1 text-sm text-[#60726b]">
+                              <p className="mt-1 text-sm text-[#2e4a40]">
                                 {titleize(candidate.taskCategory)} tasks may be served by {candidate.suggestedAlternative}.
                               </p>
                             </div>
                             {backingModel && (
-                              <div className="shrink-0 text-right text-xs text-[#7f8f88]">
+                              <div className="shrink-0 text-right text-xs font-medium text-[#4a5e56]">
                                 <p>{formatCompactNumber(backingModel.totalRequests, 1)} requests</p>
                                 <p>{formatCompactNumber(((backingModel.totalInputTokens ?? 0) + (backingModel.totalOutputTokens ?? 0)), 1)} tokens</p>
                               </div>
@@ -385,10 +459,10 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
               subtitle="Raw portfolio view of requests, token load, and observed behavior clusters."
               badge={<DashboardMetaPill>{formatCompactNumber(totalTokens, 1)} total tokens</DashboardMetaPill>}
             >
-              {modelInventory.length > 0 ? (
+              {filteredModelInventory.length > 0 ? (
                 <DashboardTable
                   headers={['Model', 'Provider', 'Requests', 'Avg tokens / req', 'Behavior']}
-                  rows={modelInventory
+                  rows={filteredModelInventory
                     .sort((a, b) => b.totalRequests - a.totalRequests)
                     .map((item) => {
                       const averageTokens = item.totalRequests > 0
@@ -398,13 +472,13 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                       return [
                         <div key={`${item.model}-name`}>
                           <p className="font-medium text-[#152820]">{item.model}</p>
-                          <p className="text-xs text-[#9aa7a0]">
+                          <p className="text-xs font-medium text-[#5a6e66]">
                             {formatCompactNumber((item.totalInputTokens ?? 0) + (item.totalOutputTokens ?? 0), 1)} total tokens
                           </p>
                         </div>,
-                        <span key={`${item.model}-provider`} className="text-[#60726b]">{item.provider}</span>,
+                        <span key={`${item.model}-provider`} className="text-[#2e4a40]">{item.provider}</span>,
                         <span key={`${item.model}-requests`} className="font-medium text-[#152820]">{formatCompactNumber(item.totalRequests, 1)}</span>,
-                        <span key={`${item.model}-avg`} className="text-[#60726b]">{formatCompactNumber(averageTokens, 1)}</span>,
+                        <span key={`${item.model}-avg`} className="text-[#2e4a40]">{formatCompactNumber(averageTokens, 1)}</span>,
                         <DashboardBadge key={`${item.model}-cluster`} tone={(clusterLabels[item.behaviorCluster]?.tone ?? 'slate')}>
                           {clusterLabels[item.behaviorCluster]?.label ?? titleize(item.behaviorCluster)}
                         </DashboardBadge>,

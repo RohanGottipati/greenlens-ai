@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
@@ -6,6 +7,7 @@ import {
   DashboardBarRow,
   DashboardEmptyState,
   DashboardFilterBar,
+  DashboardFilterPill,
   DashboardHeader,
   DashboardMetaPill,
   DashboardMiniStat,
@@ -18,10 +20,13 @@ import {
   formatNumber,
   formatPercent,
 } from '@/components/dashboard/DashboardPrimitives'
+import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
+import { AnimatedSection } from '@/components/dashboard/AnimatedSection'
 import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import { getSectionAvailability } from '@/lib/reports/report-availability'
 import {
   AlertTriangle,
@@ -31,16 +36,21 @@ import {
 } from 'lucide-react'
 
 interface LicensesPageProps {
-  searchParams?: Promise<{ reportId?: string }>
+  searchParams?: Promise<{ reportId?: string; provider?: string }>
 }
 
 export default async function LicensesPage({ searchParams }: LicensesPageProps) {
-  const requestedReportId = (await searchParams)?.reportId ?? null
+  const params = await searchParams
+  const requestedReportId = params?.reportId ?? null
+  const providerFilter = params?.provider ?? 'all'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -60,22 +70,41 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
     renewalAlerts: { provider: string; monthsToRenewal: number; renewalDate: string; actionRequired: string }[]
   } | null
   const providers = [...(license?.providers ?? [])].sort((a, b) => b.utilizationRate - a.utilizationRate)
-  const overallRate = license?.overallUtilizationRate ?? report.license_utilization_rate ?? null
-  const dormantShare = license?.totalLicensedSeats
-    ? (license.totalDormantSeats / license.totalLicensedSeats) * 100
+  const filteredProviders = providerFilter === 'all' ? providers : providers.filter((p) => p.provider === providerFilter)
+  const selectedProvider = providerFilter !== 'all' ? providers.find((p) => p.provider === providerFilter) ?? null : null
+
+  // Compute portfolio totals from provider array as fallback when license-level aggregates are missing
+  const computedTotalSeats = providers.reduce((sum, p) => sum + p.totalSeats, 0)
+  const computedActiveSeats = providers.reduce((sum, p) => sum + p.activeSeats, 0)
+  const computedDormantSeats = providers.reduce((sum, p) => sum + p.dormantSeats, 0)
+  const computedUtilization = computedTotalSeats > 0 ? (computedActiveSeats / computedTotalSeats) * 100 : null
+  const computedAnnualCost = providers.reduce((sum, p) => sum + (p.estimatedAnnualCost ?? 0), 0) || null
+  const computedSavings = providers.reduce((sum, p) => sum + (p.potentialSavingsAtRenewal ?? 0), 0) || null
+
+  // Stat card values: show selected provider's data when a provider is selected, fall back to computed totals
+  const displayUtilization = selectedProvider?.utilizationRate ?? license?.overallUtilizationRate ?? computedUtilization ?? report.license_utilization_rate ?? null
+  const displayTotalSeats = selectedProvider?.totalSeats ?? license?.totalLicensedSeats ?? (computedTotalSeats > 0 ? computedTotalSeats : null)
+  const displayActiveSeats = selectedProvider?.activeSeats ?? license?.totalActiveSeats ?? (computedActiveSeats > 0 ? computedActiveSeats : null)
+  const displayDormantSeats = selectedProvider?.dormantSeats ?? license?.totalDormantSeats ?? computedDormantSeats ?? null
+  const displayAnnualCost = selectedProvider
+    ? selectedProvider.estimatedAnnualCost
+    : license?.estimatedAnnualLicenseCost ?? computedAnnualCost
+  const displaySavings = selectedProvider
+    ? selectedProvider.potentialSavingsAtRenewal
+    : license?.potentialAnnualSavings ?? computedSavings
+
+  const dormantShare = displayTotalSeats ? (displayDormantSeats! / displayTotalSeats) * 100 : null
+  const activeShare = displayTotalSeats ? (displayActiveSeats! / displayTotalSeats) * 100 : null
+  const optimizedSpend = displayAnnualCost != null && displaySavings != null
+    ? Math.max(0, displayAnnualCost - displaySavings)
     : null
-  const activeShare = license?.totalLicensedSeats
-    ? (license.totalActiveSeats / license.totalLicensedSeats) * 100
+  const savingsRate = displayAnnualCost != null && displaySavings != null && displayAnnualCost > 0
+    ? (displaySavings / displayAnnualCost) * 100
     : null
-  const optimizedSpend = license?.estimatedAnnualLicenseCost != null && license?.potentialAnnualSavings != null
-    ? Math.max(0, license.estimatedAnnualLicenseCost - license.potentialAnnualSavings)
-    : null
-  const savingsRate = license?.estimatedAnnualLicenseCost != null && license?.potentialAnnualSavings != null && license.estimatedAnnualLicenseCost > 0
-    ? (license.potentialAnnualSavings / license.estimatedAnnualLicenseCost) * 100
-    : null
-  const largestWasteProvider = [...providers].sort((a, b) => b.dormantSeats - a.dormantSeats)[0] ?? null
-  const urgentRenewals = (license?.renewalAlerts ?? []).filter((item) => item.monthsToRenewal <= 3)
-  const optimizationActions = providers
+  const largestWasteProvider = [...filteredProviders].sort((a, b) => b.dormantSeats - a.dormantSeats)[0] ?? null
+  const filteredRenewalAlerts = (license?.renewalAlerts ?? []).filter((item) => providerFilter === 'all' || item.provider === providerFilter)
+  const urgentRenewals = filteredRenewalAlerts.filter((item) => item.monthsToRenewal <= 3)
+  const optimizationActions = filteredProviders
     .filter((provider) => provider.utilizationRate < 80 || provider.dormantSeats > 0)
     .sort((a, b) => b.dormantSeats - a.dormantSeats)
     .slice(0, 4)
@@ -90,14 +119,29 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
 
-        <DashboardFilterBar
-          items={[
-            { label: 'Page', value: 'Licenses' },
-            { label: 'Portfolio', value: providers.length > 0 ? `${providers.length} connected providers` : 'No provider data' },
-            { label: 'Primary Risk', value: urgentRenewals.length > 0 ? 'Renewal Pressure' : 'Utilization Review' },
-            { label: 'Time Period', value: report.reporting_period },
-          ]}
-        />
+        <Suspense>
+          <DashboardFilterBar>
+            <DashboardFilterSelect
+              label="Provider"
+              paramKey="provider"
+              value={providerFilter}
+              options={[
+                { label: 'All Providers', value: 'all' },
+                ...providers.map((p) => ({ label: p.provider, value: p.provider })),
+              ]}
+            />
+            <DashboardFilterSelect
+              label="Period"
+              paramKey="reportId"
+              value={requestedReportId ?? 'all'}
+              options={[
+                { label: `${report.reporting_period} (latest)`, value: 'all' },
+                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+              ]}
+            />
+            <DashboardFilterPill label="Primary Risk" value={urgentRenewals.length > 0 ? 'Renewal Pressure' : 'Utilization Review'} />
+          </DashboardFilterBar>
+        </Suspense>
 
         {!licenseAvailable && (
           <SectionAvailabilityNotice
@@ -106,50 +150,53 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
           />
         )}
 
+        <AnimatedSection animKey={providerFilter}>
         <DashboardStatGrid>
           <DashboardStatCard
             label="Utilization"
-            value={overallRate != null ? formatNumber(overallRate, 0) : '—'}
+            value={displayUtilization != null ? formatNumber(displayUtilization, 0) : '—'}
             unit="% active seats"
-            helper="Overall license engagement"
+            helper={selectedProvider ? `${selectedProvider.provider} engagement` : 'Overall license engagement'}
             icon={<Gauge className="h-4 w-4" />}
-            statusLabel={overallRate != null && overallRate >= 75 ? 'Healthy adoption' : 'Below target'}
-            statusTone={overallRate != null && overallRate >= 75 ? 'good' : 'warning'}
+            statusLabel={displayUtilization != null && displayUtilization >= 75 ? 'Healthy adoption' : 'Below target'}
+            statusTone={displayUtilization != null && displayUtilization >= 75 ? 'good' : 'warning'}
           />
           <DashboardStatCard
             label="Total Seats"
-            value={license?.totalLicensedSeats != null ? formatNumber(license.totalLicensedSeats, 0) : '—'}
+            value={displayTotalSeats != null ? formatNumber(displayTotalSeats, 0) : '—'}
             unit="licensed seats"
-            helper="Current software capacity"
+            helper={selectedProvider ? `${selectedProvider.provider} capacity` : 'Current software capacity'}
             icon={<Users className="h-4 w-4" />}
             statusLabel={activeShare != null ? `${formatPercent(activeShare, 0)} active` : 'Awaiting seat data'}
           />
           <DashboardStatCard
             label="Dormant Seats"
-            value={license?.totalDormantSeats != null ? formatNumber(license.totalDormantSeats, 0) : '—'}
+            value={displayDormantSeats != null ? formatNumber(displayDormantSeats, 0) : '—'}
             unit="inactive in period"
-            helper="Unused or underused seats"
+            helper={selectedProvider ? `${selectedProvider.provider} unused seats` : 'Unused or underused seats'}
             icon={<AlertTriangle className="h-4 w-4" />}
             statusLabel={dormantShare != null ? `${formatPercent(dormantShare, 0)} dormant share` : 'Awaiting seat data'}
             statusTone={dormantShare != null && dormantShare > 20 ? 'warning' : 'good'}
           />
           <DashboardStatCard
             label="Annual Savings"
-            value={license?.potentialAnnualSavings != null ? formatCurrency(license.potentialAnnualSavings, true) : '—'}
+            value={displaySavings != null ? formatCurrency(displaySavings, true) : '—'}
             unit="modeled savings"
-            helper="Potential renewal savings"
+            helper={selectedProvider ? `${selectedProvider.provider} renewal savings` : 'Potential renewal savings'}
             icon={<DollarSign className="h-4 w-4" />}
             statusLabel={savingsRate != null ? `${formatPercent(savingsRate, 0)} savings rate` : 'Not modeled for all providers'}
             statusTone={savingsRate != null && savingsRate > 10 ? 'good' : 'neutral'}
           />
         </DashboardStatGrid>
+        </AnimatedSection>
 
-        {!license || license.totalLicensedSeats === 0 ? (
+        {!license || (license.totalLicensedSeats === 0 && computedTotalSeats === 0) ? (
           <DashboardEmptyState
             title="No license data available yet"
             message="Connect Microsoft 365 or Google Workspace to see seat utilization, renewal timing, and optimization opportunities."
           />
         ) : (
+          <AnimatedSection animKey={providerFilter}>
           <>
             <div className="grid gap-4 xl:grid-cols-[1.04fr_0.96fr]">
               <DashboardPanel
@@ -160,7 +207,7 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
                 <div className="grid gap-3 md:grid-cols-2">
                   <DashboardMiniStat
                     label="Active seats"
-                    value={formatNumber(license.totalActiveSeats, 0)}
+                    value={displayActiveSeats != null ? formatNumber(displayActiveSeats, 0) : '—'}
                     hint="Seats with recent usage."
                     tone="good"
                   />
@@ -172,18 +219,18 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
                   />
                   <DashboardMiniStat
                     label="Soonest renewal"
-                    value={license.renewalAlerts?.[0] ? `${license.renewalAlerts[0].monthsToRenewal} mo` : '—'}
-                    hint={license.renewalAlerts?.[0]?.provider ?? 'No renewal alerts tracked'}
+                    value={filteredRenewalAlerts[0] ? `${filteredRenewalAlerts[0].monthsToRenewal} mo` : '—'}
+                    hint={filteredRenewalAlerts[0]?.provider ?? 'No renewal alerts tracked'}
                   />
                   <DashboardMiniStat
                     label="Modeled spend"
-                    value={license.estimatedAnnualLicenseCost != null ? formatCurrency(license.estimatedAnnualLicenseCost, true) : '—'}
+                    value={displayAnnualCost != null ? formatCurrency(displayAnnualCost, true) : '—'}
                     hint="Estimated annual cost across providers with pricing coverage."
                   />
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {providers.map((provider) => (
+                  {filteredProviders.map((provider) => (
                     <DashboardBarRow
                       key={provider.provider}
                       label={provider.provider}
@@ -204,12 +251,12 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
                 <div className="grid gap-3 md:grid-cols-2">
                   <DashboardMiniStat
                     label="Current annual spend"
-                    value={formatCurrency(license.estimatedAnnualLicenseCost)}
+                    value={formatCurrency(displayAnnualCost)}
                     hint="Based on providers where estimated pricing is modeled."
                   />
                   <DashboardMiniStat
                     label="Savings at renewal"
-                    value={formatCurrency(license.potentialAnnualSavings)}
+                    value={formatCurrency(displaySavings)}
                     hint="Modeled recapture from right-sizing seats."
                     tone="good"
                   />
@@ -227,22 +274,24 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
                   />
                 </div>
 
-                {license.estimatedAnnualLicenseCost != null && optimizedSpend != null && (
+                {displayAnnualCost != null && (
                   <div className="mt-4 space-y-3">
                     <DashboardBarRow
                       label="Current spend"
-                      value={formatCurrency(license.estimatedAnnualLicenseCost)}
+                      value={formatCurrency(displayAnnualCost)}
                       percentage={100}
                       tone="slate"
                       hint="Current modeled annual cost."
                     />
-                    <DashboardBarRow
-                      label="Optimized spend"
-                      value={formatCurrency(optimizedSpend)}
-                      percentage={license.estimatedAnnualLicenseCost > 0 ? (optimizedSpend / license.estimatedAnnualLicenseCost) * 100 : 0}
-                      tone="green"
-                      hint="Expected post-rightsizing spend."
-                    />
+                    {optimizedSpend != null && (
+                      <DashboardBarRow
+                        label="Optimized spend"
+                        value={formatCurrency(optimizedSpend)}
+                        percentage={displayAnnualCost > 0 ? (optimizedSpend / displayAnnualCost) * 100 : 0}
+                        tone="green"
+                        hint="Expected post-rightsizing spend."
+                      />
+                    )}
                   </div>
                 )}
               </DashboardPanel>
@@ -252,15 +301,15 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
               <DashboardPanel
                 title="Provider detail board"
                 subtitle="Provider-level utilization, seat mix, and direct recommendations from the current report."
-                badge={<DashboardMetaPill>{providers.length} providers</DashboardMetaPill>}
+                badge={<DashboardMetaPill>{filteredProviders.length} providers</DashboardMetaPill>}
               >
                 <div className="space-y-3">
-                  {providers.map((provider) => (
+                  {filteredProviders.map((provider) => (
                     <div key={provider.provider} className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="font-medium text-[#152820]">{provider.provider}</p>
-                          <p className="mt-1 text-sm leading-6 text-[#60726b]">{provider.recommendation}</p>
+                          <p className="mt-1 text-sm leading-6 text-[#2e4a40]">{provider.recommendation}</p>
                         </div>
                         <DashboardBadge tone={provider.utilizationRate < 75 ? 'amber' : 'green'}>
                           {formatPercent(provider.utilizationRate, 0)}
@@ -294,20 +343,20 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
                 subtitle="Subscriptions nearing renewal and where action timing matters most."
                 badge={<DashboardBadge tone={urgentRenewals.length > 0 ? 'amber' : 'green'}>{urgentRenewals.length > 0 ? `${urgentRenewals.length} urgent renewals` : 'No urgent renewals'}</DashboardBadge>}
               >
-                {license.renewalAlerts && license.renewalAlerts.length > 0 ? (
+                {filteredRenewalAlerts.length > 0 ? (
                   <div className="space-y-3">
-                    {license.renewalAlerts.map((alert, index) => (
+                    {filteredRenewalAlerts.map((alert, index) => (
                       <div key={`${alert.provider}-${index}`} className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <p className="font-medium text-[#152820]">{alert.provider}</p>
-                            <p className="mt-1 text-sm leading-6 text-[#60726b]">{alert.actionRequired}</p>
+                            <p className="mt-1 text-sm leading-6 text-[#2e4a40]">{alert.actionRequired}</p>
                           </div>
                           <DashboardBadge tone={alert.monthsToRenewal <= 3 ? 'amber' : 'slate'}>
                             {alert.monthsToRenewal} months
                           </DashboardBadge>
                         </div>
-                        <p className="mt-3 text-xs text-[#7f8f88]">Renewal date: {alert.renewalDate}</p>
+                        <p className="mt-3 text-xs font-medium text-[#4a5e56]">Renewal date: {alert.renewalDate}</p>
                       </div>
                     ))}
                   </div>
@@ -350,21 +399,22 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
               <DashboardPanel
                 title="License ledger"
                 subtitle="Provider-level capacity, cost, and estimated savings in one comparable table."
-                badge={<DashboardMetaPill>{providers.length} providers</DashboardMetaPill>}
+                badge={<DashboardMetaPill>{filteredProviders.length} providers</DashboardMetaPill>}
               >
                 <DashboardTable
                   headers={['Provider', 'Utilization', 'Seat Mix', 'Cost', 'Savings']}
-                  rows={providers.map((provider) => [
+                  rows={filteredProviders.map((provider) => [
                     <span key={`${provider.provider}-name`} className="font-medium text-[#152820]">{provider.provider}</span>,
                     <span key={`${provider.provider}-util`} className="font-medium text-[#152820]">{formatPercent(provider.utilizationRate, 0)}</span>,
-                    <span key={`${provider.provider}-seats`} className="text-[#60726b]">{provider.activeSeats}/{provider.totalSeats} active · {provider.dormantSeats} dormant</span>,
-                    <span key={`${provider.provider}-cost`} className="text-[#60726b]">{formatCurrency(provider.estimatedAnnualCost)}</span>,
+                    <span key={`${provider.provider}-seats`} className="text-[#2e4a40]">{provider.activeSeats}/{provider.totalSeats} active · {provider.dormantSeats} dormant</span>,
+                    <span key={`${provider.provider}-cost`} className="text-[#2e4a40]">{formatCurrency(provider.estimatedAnnualCost)}</span>,
                     <span key={`${provider.provider}-savings`} className="text-emerald-700">{formatCurrency(provider.potentialSavingsAtRenewal)}</span>,
                   ])}
                 />
               </DashboardPanel>
             </div>
           </>
+          </AnimatedSection>
         )}
       </div>
     </DashboardPage>

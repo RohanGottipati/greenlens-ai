@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
@@ -6,6 +7,7 @@ import {
   DashboardBarRow,
   DashboardEmptyState,
   DashboardFilterBar,
+  DashboardFilterPill,
   DashboardHeader,
   DashboardMetaPill,
   DashboardMiniStat,
@@ -18,11 +20,14 @@ import {
   formatPercent,
   titleize,
 } from '@/components/dashboard/DashboardPrimitives'
+import { DashboardFilterSelect } from '@/components/dashboard/DashboardFilterSelect'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
+import { AnimatedSection } from '@/components/dashboard/AnimatedSection'
 import SectionAvailabilityNotice from '@/components/dashboard/SectionAvailabilityNotice'
 import TrendChart from '@/components/dashboard/TrendChart'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import { getSectionAvailability } from '@/lib/reports/report-availability'
 import {
   Activity,
@@ -41,7 +46,10 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name, industry')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -50,7 +58,7 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
   const benchmarkAvailable = sectionAvailability.benchmark.status === 'available'
   const benchmark = report.benchmark_data
   const stat = report.stat_analysis
-  const carbonPercentile = report.carbon_percentile ?? stat?.carbon_percentile?.percentile ?? 0
+  const carbonPercentile = report.carbon_percentile ?? stat?.carbon_percentile?.percentile ?? null
   const anomalyDetected = report.anomaly_detected ?? stat?.anomaly_detection?.anomaly_detected ?? false
   const trendDirection = report.trend_direction ?? stat?.usage_trend?.trend_direction ?? 'stable'
   const taskClustering = stat?.task_clustering_summary as {
@@ -100,14 +108,21 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
 
-        <DashboardFilterBar
-          items={[
-            { label: 'Page', value: 'Benchmark' },
-            { label: 'Industry', value: company!.industry?.replace(/_/g, ' ') ?? 'General benchmark set' },
-            { label: 'Trend', value: titleize(trendDirection) },
-            { label: 'Time Period', value: report.reporting_period },
-          ]}
-        />
+        <Suspense>
+          <DashboardFilterBar>
+            <DashboardFilterSelect
+              label="Period"
+              paramKey="reportId"
+              value={requestedReportId ?? 'all'}
+              options={[
+                { label: `${report.reporting_period} (latest)`, value: 'all' },
+                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+              ]}
+            />
+            <DashboardFilterPill label="Industry" value={company!.industry?.replace(/_/g, ' ') ?? 'General benchmark set'} />
+            <DashboardFilterPill label="Trend" value={titleize(trendDirection)} />
+          </DashboardFilterBar>
+        </Suspense>
 
         {!benchmarkAvailable && (
           <SectionAvailabilityNotice
@@ -119,12 +134,12 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
         <DashboardStatGrid>
           <DashboardStatCard
             label="Carbon Percentile"
-            value={formatNumber(carbonPercentile, 0)}
+            value={carbonPercentile != null ? formatNumber(carbonPercentile, 0) : '—'}
             unit="th percentile"
             helper="Relative sector position"
             icon={<BarChart3 className="h-4 w-4" />}
             statusLabel={benchmark?.carbon_percentile?.relative_position ?? stat?.carbon_percentile?.relative_position ?? 'Benchmark narrative pending'}
-            statusTone={carbonPercentile >= 75 ? 'warning' : 'good'}
+            statusTone={carbonPercentile != null && carbonPercentile >= 75 ? 'warning' : 'good'}
           />
           <DashboardStatCard
             label="Trend Direction"
@@ -154,18 +169,14 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
           />
         </DashboardStatGrid>
 
-        {!benchmarkAvailable ? (
-          <DashboardEmptyState
-            title="Benchmark results are not available yet"
-            message="Benchmarking relies on enough historical usage data to compare your organization against synthetic sector distributions."
-          />
-        ) : (
-          <>
+        <AnimatedSection animKey={requestedReportId ?? 'latest'}>
+        <>
+          {benchmarkAvailable ? (
             <div className="grid gap-4 xl:grid-cols-[0.98fr_1.02fr]">
               <DashboardPanel
                 title="Benchmark positioning"
                 subtitle="Where your current carbon intensity lands relative to the benchmark distribution GreenLens uses for your sector."
-                badge={<DashboardBadge tone={carbonPercentile >= 75 ? 'amber' : 'green'}>{carbonPercentile >= 75 ? 'Upper-emissions quartile' : 'Within expected range'}</DashboardBadge>}
+                badge={<DashboardBadge tone={carbonPercentile != null && carbonPercentile >= 75 ? 'amber' : 'green'}>{carbonPercentile != null && carbonPercentile >= 75 ? 'Upper-emissions quartile' : 'Within expected range'}</DashboardBadge>}
               >
                 <div className="grid gap-3 md:grid-cols-2">
                   <DashboardMiniStat
@@ -187,20 +198,20 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
                     label="Relative position"
                     value={benchmark?.carbon_percentile?.relative_position ?? stat?.carbon_percentile?.relative_position ?? '—'}
                     hint="Narrative interpretation of your percentile."
-                    tone={carbonPercentile >= 75 ? 'warning' : 'good'}
+                    tone={carbonPercentile != null && carbonPercentile >= 75 ? 'warning' : 'good'}
                   />
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-[#fbfcfb] px-4 py-4">
                   <div className="flex items-center justify-between gap-4 text-sm">
-                    <span className="text-[#7f8f88]">Lower benchmark emissions</span>
-                    <span className="font-medium text-[#152820]">{formatPercent(carbonPercentile, 0)}</span>
-                    <span className="text-[#7f8f88]">Higher benchmark emissions</span>
+                    <span className="text-[#4a5e56]">Lower benchmark emissions</span>
+                    <span className="font-medium text-[#152820]">{carbonPercentile != null ? formatPercent(carbonPercentile, 0) : '—'}</span>
+                    <span className="text-[#4a5e56]">Higher benchmark emissions</span>
                   </div>
                   <div className="mt-3 h-3 overflow-hidden rounded-full bg-[#e4ece7]">
-                    <div className="h-full rounded-full bg-[#38b76a]" style={{ width: `${Math.min(100, carbonPercentile)}%` }} />
+                    <div className="h-full rounded-full bg-[#38b76a]" style={{ width: `${Math.min(100, carbonPercentile ?? 0)}%` }} />
                   </div>
-                  <p className="mt-3 text-xs text-[#7f8f88]">{stat?.carbon_percentile?.method}</p>
+                  <p className="mt-3 text-xs text-[#4a5e56]">{stat?.carbon_percentile?.method}</p>
                 </div>
               </DashboardPanel>
 
@@ -231,7 +242,14 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
                 </div>
               </DashboardPanel>
             </div>
+          ) : (
+            <DashboardEmptyState
+              title="Benchmark positioning unavailable"
+              message="Benchmarking relies on enough historical usage data to compare your organisation against synthetic sector distributions."
+            />
+          )}
 
+          {stat && (
             <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
               <DashboardPanel
                 title="Statistical confidence"
@@ -298,7 +316,7 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
                       />
                     ))}
                     {taskClustering?.method && (
-                      <p className="rounded-2xl bg-[#fbfcfb] px-4 py-3 text-sm leading-6 text-[#60726b]">
+                      <p className="rounded-2xl bg-[#fbfcfb] px-4 py-3 text-sm leading-6 text-[#2e4a40]">
                         {taskClustering.method}
                       </p>
                     )}
@@ -311,18 +329,19 @@ export default async function BenchmarkPage({ searchParams }: BenchmarkPageProps
                 )}
               </DashboardPanel>
             </div>
+          )}
 
-            {report.executive_summary?.hype_cycle_context && (
-              <DashboardPanel
-                title="Hype-cycle narrative"
-                subtitle="Executive framing for how current usage patterns align with broader market maturity."
-                badge={<DashboardBadge tone="blue">Narrative context</DashboardBadge>}
-              >
-                <p className="text-sm leading-7 text-[#60726b]">{report.executive_summary.hype_cycle_context}</p>
-              </DashboardPanel>
-            )}
-          </>
-        )}
+          {report.executive_summary?.hype_cycle_context && (
+            <DashboardPanel
+              title="Hype-cycle narrative"
+              subtitle="Executive framing for how current usage patterns align with broader market maturity."
+              badge={<DashboardBadge tone="blue">Narrative context</DashboardBadge>}
+            >
+              <p className="text-sm leading-7 text-[#2e4a40]">{report.executive_summary.hype_cycle_context}</p>
+            </DashboardPanel>
+          )}
+        </>
+        </AnimatedSection>
       </div>
     </DashboardPage>
   )

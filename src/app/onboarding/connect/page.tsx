@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { resolvePersistedOAuthSuccess } from '@/lib/integrations/oauth-helpers'
 
@@ -122,7 +123,7 @@ function ConnectPageInner() {
     }
 
     loadConnected()
-  }, [searchParams])
+  }, [nextParam, router, searchParams])
 
   const handleConnect = async (integrationId: string, connectUrl: string) => {
     setConnecting(integrationId)
@@ -174,7 +175,7 @@ function ConnectPageInner() {
     <div className="hero-nature-bg min-h-screen flex flex-col">
       {/* Glass header */}
       <div className="glass-header px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'rgba(76,112,96,0.9)' }}>
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -182,12 +183,12 @@ function ConnectPageInner() {
             </svg>
           </div>
           <span className="text-white font-medium text-sm tracking-tight">GreenLens AI</span>
-        </div>
+        </Link>
         <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Step 2 of 3</span>
       </div>
 
       {/* Centered content */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
         <div
           className="max-w-lg w-full rounded-2xl p-8 fade-in-up"
           style={{

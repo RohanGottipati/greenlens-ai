@@ -1,14 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
-export const dynamic = 'force-dynamic'
 import AnalysisTriggerScreen from '@/components/dashboard/AnalysisTriggerScreen'
 import OverviewDashboard from '@/components/dashboard/OverviewDashboard'
 import RerunAnalysisButton from '@/components/dashboard/RerunAnalysisButton'
 import { getCompanyAnalysisState } from '@/lib/analysis/get-company-analysis-state'
 import { getPreferredReport } from '@/lib/reports/get-preferred-report'
+import { getCompanyReports } from '@/lib/reports/get-company-reports'
 import {
   getReportFreshness,
   getSectionAvailability,
 } from '@/lib/reports/report-availability'
+
+export const dynamic = 'force-dynamic'
 
 interface DashboardPageProps {
   searchParams?: Promise<{ reportId?: string }>
@@ -20,7 +22,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { data: { user } } = await supabase.auth.getUser()
   const { data: company } = await supabase.from('companies').select('id, name')
     .eq('supabase_user_id', user!.id).single()
-  const report = await getPreferredReport(supabase, company!.id, requestedReportId)
+  const [report, availableReports] = await Promise.all([
+    getPreferredReport(supabase, company!.id, requestedReportId),
+    getCompanyReports(supabase, company!.id),
+  ])
   const { analysisJob } = await getCompanyAnalysisState(supabase, company!.id)
 
   if (!report) return <AnalysisTriggerScreen companyId={company!.id} initialJobState={analysisJob} />
@@ -54,6 +59,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     <OverviewDashboard
       companyName={company!.name}
       reportPeriod={report.reporting_period}
+      requestedReportId={requestedReportId}
+      availableReports={availableReports}
       latestCompleteDay={latestCompleteDay}
       anomalyDetected={anomalyDetected}
       benchmarkAvailable={benchmarkAvailable}
