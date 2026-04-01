@@ -36,6 +36,11 @@ import {
   Waves,
 } from 'lucide-react'
 
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+}
+
 interface FootprintPageProps {
   searchParams?: Promise<{ reportId?: string; model?: string }>
 }
@@ -91,7 +96,7 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
       <div className="space-y-5">
         <DashboardHeader
           title="Carbon and water footprint"
-          subtitle={`${company!.name} · ${report.reporting_period}. Understand where AI emissions are concentrated and what reductions are realistically available.`}
+          subtitle={`${company!.name} · ${formatPeriodMonth(report.reporting_period)}. Understand where AI emissions are concentrated and what reductions are realistically available.`}
           badge={<DashboardMetaPill>{filteredByModel.length > 0 ? `${filteredByModel.length} emitting models tracked` : 'Awaiting footprint detail'}</DashboardMetaPill>}
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
@@ -112,8 +117,8 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
             <DashboardFilterPill label="Scenario" value={alternativeCarbonKg != null ? 'Actual vs Optimized' : 'Actual Only'} />
@@ -269,61 +274,28 @@ export default async function FootprintPage({ searchParams }: FootprintPageProps
               </DashboardPanel>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-              <DashboardPanel
-                title="Water equivalency"
-                subtitle="Cooling-water impact translated into quantities easier for stakeholders to reason about."
-                badge={<DashboardBadge tone="blue">Resource framing</DashboardBadge>}
-              >
-                <div className="grid gap-3 md:grid-cols-2">
-                  <DashboardMiniStat
-                    label="Total water"
-                    value={totalWaterLiters != null ? `${formatCompactNumber(totalWaterLiters, 1)} L` : '—'}
-                    hint="Direct cooling-water estimate."
-                  />
-                  <DashboardMiniStat
-                    label="Bottle equivalent"
-                    value={waterBottles != null ? formatCompactNumber(waterBottles, 1) : '—'}
-                    hint="Approximate 500ml bottles represented."
-                  />
-                  <DashboardMiniStat
-                    label="Water savings"
-                    value={waterSavingsLiters != null ? `${formatCompactNumber(waterSavingsLiters, 1)} L` : '—'}
-                    hint="Potential reduction under optimized routing."
-                    tone="good"
-                  />
-                  <DashboardMiniStat
-                    label="Saved bottle equivalent"
-                    value={waterSavingsBottles != null ? formatCompactNumber(waterSavingsBottles, 1) : '—'}
-                    hint="Illustrative avoided bottle count."
-                    tone="good"
-                  />
+            <DashboardPanel
+              title="Methodology and confidence"
+              subtitle="How GreenLens estimated footprint values and what period the data most likely represents."
+              badge={<DashboardMetaPill>{carbonConfidence ? `Data through ${carbonConfidence}` : 'Freshness pending'}</DashboardMetaPill>}
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#4a6459]">Carbon methodology</p>
+                  <p className="mt-2 text-sm leading-6 text-[#2e4a40]">
+                    {footprint?.carbon_methodology ??
+                      'Carbon is modeled from provider usage data, model-specific energy intensity assumptions, regional grid factors, and a hyperscale data-center PUE baseline.'}
+                  </p>
                 </div>
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Methodology and confidence"
-                subtitle="How GreenLens estimated footprint values and what period the data most likely represents."
-                badge={<DashboardMetaPill>{carbonConfidence ? `Data through ${carbonConfidence}` : 'Freshness pending'}</DashboardMetaPill>}
-              >
-                <div className="space-y-3">
-                  <div className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4a6459]">Carbon methodology</p>
-                    <p className="mt-2 text-sm leading-6 text-[#2e4a40]">
-                      {footprint?.carbon_methodology ??
-                        'Carbon is modeled from provider usage data, model-specific energy intensity assumptions, regional grid factors, and a hyperscale data-center PUE baseline.'}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4a6459]">Water methodology</p>
-                    <p className="mt-2 text-sm leading-6 text-[#2e4a40]">
-                      {footprint?.water_methodology ??
-                        'Water usage is estimated from energy demand using representative WUE assumptions and translated into direct cooling-water equivalents.'}
-                    </p>
-                  </div>
+                <div className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#4a6459]">Water methodology</p>
+                  <p className="mt-2 text-sm leading-6 text-[#2e4a40]">
+                    {footprint?.water_methodology ??
+                      'Water usage is estimated from energy demand using representative WUE assumptions and translated into direct cooling-water equivalents.'}
+                  </p>
                 </div>
-              </DashboardPanel>
-            </div>
+              </div>
+            </DashboardPanel>
 
             <DashboardPanel
               title="Model emission breakdown"
