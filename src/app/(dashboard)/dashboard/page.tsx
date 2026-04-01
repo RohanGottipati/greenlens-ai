@@ -49,6 +49,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const carbonDelta = carbonWaterAvailable && report.prev_carbon_kg && report.carbon_kg != null
     ? Math.round(((report.carbon_kg - report.prev_carbon_kg) / report.prev_carbon_kg) * 100) : null
+  const waterDelta = carbonWaterAvailable && report.prev_water_liters != null && report.prev_water_liters > 0 && report.water_liters != null
+    ? Math.round(((report.water_liters - report.prev_water_liters) / report.prev_water_liters) * 100)
+    : null
   const scoreDelta = modelEfficiencyAvailable && report.prev_model_efficiency_score && report.model_efficiency_score != null
     ? report.model_efficiency_score - report.prev_model_efficiency_score : null
   const utilizationRate = licenseAvailable && report.license_utilization_rate != null
@@ -67,6 +70,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       carbonKg={carbonWaterAvailable ? report.carbon_kg ?? null : null}
       carbonDelta={carbonDelta}
       waterLiters={carbonWaterAvailable ? report.water_liters ?? null : null}
+      waterDelta={waterDelta}
       modelEfficiencyScore={modelEfficiencyAvailable ? report.model_efficiency_score ?? null : null}
       modelScoreDelta={scoreDelta}
       licenseUtilizationRate={utilizationRate}
