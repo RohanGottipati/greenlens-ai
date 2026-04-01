@@ -13,7 +13,6 @@ import {
   DashboardPanel,
   DashboardStatCard,
   DashboardStatGrid,
-  DashboardTable,
   formatCompactNumber,
   formatNumber,
   formatPercent,
@@ -67,6 +66,11 @@ const clusterLabels: Record<string, { label: string; tone: 'blue' | 'amber' | 'g
     tone: 'amber',
     description: 'Low volume, high tokens — frontier models justified',
   },
+}
+
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split("-").map(Number)
+  return new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
 }
 
 interface ModelsPageProps {
@@ -215,7 +219,7 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
       <div className="space-y-5">
         <DashboardHeader
           title="Model efficiency studio"
-          subtitle={`${company!.name} · ${report.reporting_period}. Audit model fit, frontier dependence, and right-sizing opportunities.`}
+          subtitle={`${company!.name} · ${formatPeriodMonth(report.reporting_period)}. Audit model fit, frontier dependence, and right-sizing opportunities.`}
           badge={<DashboardMetaPill>{modelInventory.length} models analyzed</DashboardMetaPill>}
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
@@ -248,8 +252,8 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
           </div>
@@ -340,23 +344,68 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                   />
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  {providerSummary.slice(0, 4).map((provider) => (
-                    <DashboardBarRow
-                      key={provider.provider}
-                      label={provider.provider}
-                      value={`${formatCompactNumber(provider.requests, 1)} requests`}
-                      percentage={provider.requestShare}
-                      hint={`${provider.modelCount} models · ${formatCompactNumber(provider.totalTokens, 1)} tokens`}
-                    />
-                  ))}
-                </div>
+                {providerSummary.length > 0 && (
+                  <>
+                    <p className="mt-5 mb-2 text-xs font-medium uppercase tracking-[0.12em] text-[#8fa098]">By provider</p>
+                    <div className="space-y-3">
+                      {providerSummary.slice(0, 4).map((provider) => (
+                        <DashboardBarRow
+                          key={provider.provider}
+                          label={provider.provider}
+                          value={`${formatCompactNumber(provider.requests, 1)} requests`}
+                          percentage={provider.requestShare}
+                          hint={`${provider.modelCount} models · ${formatCompactNumber(provider.totalTokens, 1)} tokens`}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {filteredModelInventory.length > 0 && (
+                  <>
+                    <p className="mt-5 mb-2 text-xs font-medium uppercase tracking-[0.12em] text-[#8fa098]">Highest-load models</p>
+                    <div className="space-y-2">
+                      {[...filteredModelInventory]
+                        .sort((a, b) => b.totalRequests - a.totalRequests)
+                        .map((model) => {
+                          const avgTok = model.totalRequests > 0
+                            ? ((model.totalInputTokens ?? 0) + (model.totalOutputTokens ?? 0)) / model.totalRequests
+                            : 0
+                          const clusterProfile = clusterLabels[model.behaviorCluster]
+                          return (
+                            <div key={model.model} className="rounded-2xl bg-[#fbfcfb] px-4 py-3 transition-colors hover:bg-[#f5f8f5]">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium text-[#1a2c24]">{model.model}</p>
+                                  <p className="mt-0.5 text-xs text-[#4a5e56]">{model.provider} · {formatCompactNumber(avgTok, 1)} tok/req</p>
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                  <span className="text-sm font-semibold text-[#152820]">{formatCompactNumber(model.totalRequests, 1)} req</span>
+                                  <DashboardBadge tone={clusterProfile?.tone ?? 'slate'}>
+                                    {clusterProfile?.label ?? titleize(model.behaviorCluster)}
+                                  </DashboardBadge>
+                                </div>
+                              </div>
+                              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-[#e4ece7]">
+                                <div
+                                  className="h-full rounded-full bg-[#38b76a]"
+                                  style={{ width: `${totalRequests > 0 ? (model.totalRequests / totalRequests) * 100 : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </>
+                )}
               </DashboardPanel>
 
               <DashboardPanel
                 title="Task cluster intelligence"
                 subtitle="GreenLens classifies behavior patterns to judge whether each workload is using the right model class."
                 badge={<DashboardMetaPill>{taskClusters.length > 0 ? `${taskClusters.length} classified workloads` : 'No clusters yet'}</DashboardMetaPill>}
+                fillHeight
+                className="h-full"
               >
                 {clusterSummary.length > 0 ? (
                   <div className="space-y-3">
@@ -387,113 +436,42 @@ export default async function ModelsPage({ searchParams }: ModelsPageProps) {
                     message="Cluster-level routing insight will appear once enough model usage has been classified for the reporting period."
                   />
                 )}
-              </DashboardPanel>
-            </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-              <DashboardPanel
-                title="Highest-load models"
-                subtitle="The models consuming the largest share of request volume and where token intensity may be pushing costs upward."
-                badge={<DashboardMetaPill>{formatCompactNumber(totalRequests, 1)} requests tracked</DashboardMetaPill>}
-              >
-                {filteredTopModels.length > 0 ? (
-                  <div className="space-y-3">
-                    {filteredTopModels.map((model) => (
-                      <DashboardBarRow
-                        key={model.model}
-                        label={model.model}
-                        value={`${formatCompactNumber(model.totalRequests, 1)} req`}
-                        percentage={totalRequests > 0 ? (model.totalRequests / totalRequests) * 100 : 0}
-                        hint={`${model.provider} · ${formatCompactNumber(model.avgTokensPerRequest, 1)} tokens/request · ${titleize(model.behaviorCluster)}`}
-                      />
-                    ))}
+                <div className="mt-auto pt-5 border-t border-[#f0f3f0]">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-[#8fa098]">Right-size candidates</p>
+                    <DashboardBadge tone={rightSizeCandidates.length > 0 ? 'amber' : 'green'}>
+                      {rightSizeCandidates.length > 0 ? 'Review needed' : 'No urgent downgrades'}
+                    </DashboardBadge>
                   </div>
-                ) : (
-                  <DashboardEmptyState
-                    title="No models for selected provider"
-                    message="No model usage data matches the current provider filter."
-                  />
-                )}
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Right-size candidates"
-                subtitle="High-capability models being used for simpler workloads are surfaced here first."
-                badge={<DashboardBadge tone={rightSizeCandidates.length > 0 ? 'amber' : 'green'}>{rightSizeCandidates.length > 0 ? 'Review needed' : 'No urgent downgrades'}</DashboardBadge>}
-              >
-                {rightSizeCandidates.length > 0 ? (
-                  <div className="space-y-3">
-                    {rightSizeCandidates.slice(0, 5).map((candidate, index) => {
-                      const backingModel = modelInventory.find((item) => item.model === candidate.model)
-                      return (
-                        <div key={`${candidate.model}-${index}`} className="rounded-2xl bg-[#fbfcfb] px-4 py-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="font-medium text-[#152820]">{candidate.model}</p>
-                              <p className="mt-1 text-sm text-[#2e4a40]">
-                                {titleize(candidate.taskCategory)} tasks may be served by {candidate.suggestedAlternative}.
-                              </p>
+                  {rightSizeCandidates.length > 0 ? (
+                    <div className="space-y-2">
+                      {rightSizeCandidates.slice(0, 4).map((candidate, index) => {
+                        const backingModel = modelInventory.find((item) => item.model === candidate.model)
+                        return (
+                          <div key={`${candidate.model}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-[#fbfcfb] px-3 py-2.5">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-[#152820]">{candidate.model}</p>
+                              <p className="text-xs text-[#5a6e66]">→ {candidate.suggestedAlternative}</p>
                             </div>
                             {backingModel && (
-                              <div className="shrink-0 text-right text-xs font-medium text-[#4a5e56]">
-                                <p>{formatCompactNumber(backingModel.totalRequests, 1)} requests</p>
-                                <p>{formatCompactNumber(((backingModel.totalInputTokens ?? 0) + (backingModel.totalOutputTokens ?? 0)), 1)} tokens</p>
-                              </div>
+                              <span className="shrink-0 text-xs font-medium text-[#4a5e56]">
+                                {formatCompactNumber(backingModel.totalRequests, 1)} req
+                              </span>
                             )}
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <DashboardEmptyState
-                    title="No critical right-sizing candidates surfaced"
-                    message="GreenLens did not detect clear high-capability overuse for this reporting window."
-                  />
-                )}
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[#5a6e66]">No immediate downgrades identified for this period.</p>
+                  )}
+                </div>
               </DashboardPanel>
             </div>
 
-            <DashboardPanel
-              title="Model inventory"
-              subtitle="Raw portfolio view of requests, token load, and observed behavior clusters."
-              badge={<DashboardMetaPill>{formatCompactNumber(totalTokens, 1)} total tokens</DashboardMetaPill>}
-            >
-              {filteredModelInventory.length > 0 ? (
-                <DashboardTable
-                  headers={['Model', 'Provider', 'Requests', 'Avg tokens / req', 'Behavior']}
-                  rows={filteredModelInventory
-                    .sort((a, b) => b.totalRequests - a.totalRequests)
-                    .map((item) => {
-                      const averageTokens = item.totalRequests > 0
-                        ? ((item.totalInputTokens ?? 0) + (item.totalOutputTokens ?? 0)) / item.totalRequests
-                        : 0
 
-                      return [
-                        <div key={`${item.model}-name`}>
-                          <p className="font-medium text-[#152820]">{item.model}</p>
-                          <p className="text-xs font-medium text-[#5a6e66]">
-                            {formatCompactNumber((item.totalInputTokens ?? 0) + (item.totalOutputTokens ?? 0), 1)} total tokens
-                          </p>
-                        </div>,
-                        <span key={`${item.model}-provider`} className="text-[#2e4a40]">{item.provider}</span>,
-                        <span key={`${item.model}-requests`} className="font-medium text-[#152820]">{formatCompactNumber(item.totalRequests, 1)}</span>,
-                        <span key={`${item.model}-avg`} className="text-[#2e4a40]">{formatCompactNumber(averageTokens, 1)}</span>,
-                        <DashboardBadge key={`${item.model}-cluster`} tone={(clusterLabels[item.behaviorCluster]?.tone ?? 'slate')}>
-                          {clusterLabels[item.behaviorCluster]?.label ?? titleize(item.behaviorCluster)}
-                        </DashboardBadge>,
-                      ]
-                    })}
-                />
-              ) : (
-                <DashboardEmptyState
-                  title="Inventory data is not yet available"
-                  message="GreenLens needs usage records from your connected AI providers before the model inventory can be populated."
-                />
-              )}
-            </DashboardPanel>
-
-            {mitigationStrategies.length > 0 && (
+{mitigationStrategies.length > 0 && (
               <DashboardPanel
                 title="Optimization playbook"
                 subtitle="Recommended next steps to improve portfolio fit and reduce unnecessary frontier usage."

@@ -80,14 +80,14 @@ export function DashboardHeader({
 }) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <span className="mt-1.5 h-6 w-[3px] shrink-0 rounded-full bg-[#38b76a]" />
-        <div>
+        <div className="min-w-0">
           <h1 className="text-[1.6rem] font-bold tracking-tight text-[#12241d]">{title}</h1>
           <p className="mt-1 text-sm font-medium text-[#546760]">{subtitle}</p>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         {badge}
         {actions}
       </div>
@@ -97,7 +97,7 @@ export function DashboardHeader({
 
 export function DashboardMetaPill({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-full border border-[#dceddf] bg-[#f7fbf8] px-3 py-1.5 text-[11px] font-medium text-[#4d8369]">
+    <div className="rounded-full border border-[#dceddf] bg-[#f7fbf8] px-3 py-1.5 text-xs font-medium text-[#4d8369]">
       {children}
     </div>
   )
@@ -161,7 +161,7 @@ export function DashboardFilterPill({
 }) {
   return (
     <div className="flex-1 basis-40 rounded-xl border border-[#eef2ef] border-l-2 border-l-[#3ac56d]/40 bg-white px-4 py-2.5">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[#5a6e66]">{label}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-[#5a6e66]">{label}</p>
       <div className="mt-1 flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#38b76a]/60" />
         <span className="truncate text-sm font-medium text-[#1b2b23]">{value}</span>
@@ -216,18 +216,18 @@ export function DashboardStatCard({
     <div className="relative overflow-hidden rounded-[18px] border border-[#eef2ef] bg-white p-5 shadow-[0_4px_16px_rgba(16,38,29,0.06)] transition-shadow duration-200 hover:shadow-[0_8px_24px_rgba(16,38,29,0.10)]">
       <div className="absolute left-0 top-0 h-[3px] w-12 rounded-br-full bg-[#38b76a] opacity-70" />
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#5c6e67]">{label}</p>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#5c6e67]">{label}</p>
           <p className="mt-3 text-[2rem] font-bold tracking-tight text-[#152820]">{value}</p>
           <p className="mt-0.5 text-xs text-[#5c6e67]">{unit}</p>
         </div>
-        <div className="rounded-2xl bg-[#f0faf4] p-3 text-[#38b76a] ring-1 ring-[#38b76a]/10">{icon}</div>
+        <div className="shrink-0 rounded-2xl bg-[#f0faf4] p-3 text-[#38b76a] ring-1 ring-[#38b76a]/10">{icon}</div>
       </div>
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <span className="text-xs text-[#5c6e67]">{helper}</span>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <span className="min-w-0 flex-1 text-xs text-[#5c6e67]">{helper}</span>
         {delta !== null && delta !== undefined ? (
           <span className={cx(
-            'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums',
+            'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
             deltaIsGood ? 'bg-[#eaf7ee] text-[#1e7d45]' : 'bg-red-50 text-red-600'
           )}>
             {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -236,11 +236,16 @@ export function DashboardStatCard({
             {deltaSuffix}
           </span>
         ) : statusLabel ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf7ee] px-2.5 py-1 text-[11px] font-semibold text-[#1e7d45]">
+          <span className={cx(
+            'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold',
+            statusTone === 'warning' ? 'bg-amber-50 text-amber-700' :
+            statusTone === 'neutral' ? 'bg-slate-50 text-slate-600' :
+            'bg-[#eaf7ee] text-[#1e7d45]'
+          )}>
             {statusLabel}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf7ee] px-2.5 py-1 text-[11px] font-semibold text-[#1e7d45]">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#eaf7ee] px-2.5 py-1 text-xs font-semibold text-[#1e7d45]">
             <CheckCircle2 className="h-3 w-3" />
             Live
           </span>
@@ -268,11 +273,11 @@ export function DashboardPanel({
   return (
     <section className={cx('rounded-[20px] border border-[#eff2ef] bg-white p-5 shadow-[0_8px_26px_rgba(16,38,29,0.05)]', fillHeight && 'flex flex-col', className)}>
       <div className="flex items-start justify-between gap-4 border-b border-[#f0f3f0] pb-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold text-[#152820]">{title}</h2>
           {subtitle && <p className="mt-1 text-xs leading-5 text-[#5a6d65]">{subtitle}</p>}
         </div>
-        {badge}
+        {badge && <div className="shrink-0">{badge}</div>}
       </div>
       <div className={cx('mt-5', fillHeight && 'flex-1 flex flex-col')}>{children}</div>
     </section>
@@ -304,7 +309,7 @@ export function DashboardMiniStat({
 
   return (
     <div className={cx('rounded-2xl border border-[#eef2ef] bg-[#fafcfb] pl-3 pr-4 py-3', borderClass)}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[#5a6e66]">{label}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-[#5a6e66]">{label}</p>
       <p className={cx('mt-2 text-[1.55rem] font-semibold', colorClass)}>{value}</p>
       {hint && <p className="mt-1 text-xs font-medium leading-5 text-[#4a5e56]">{hint}</p>}
     </div>
@@ -329,7 +334,7 @@ export function DashboardBadge({
           : 'bg-emerald-50 text-emerald-800 border-emerald-200'
 
   return (
-    <span className={cx('inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold', toneClass)}>
+    <span className={cx('inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold', toneClass)}>
       {children}
     </span>
   )
@@ -363,14 +368,14 @@ export function DashboardBarRow({
   return (
     <div className="rounded-2xl bg-[#fbfcfb] px-4 py-3 transition-colors duration-150 hover:bg-[#f5f8f5]">
       <div className="flex items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={cx('mt-0.5 h-2 w-2 shrink-0 rounded-full', dotClass)} />
-            <p className="text-sm font-medium text-[#1a2c24]">{label}</p>
+            <p className="truncate text-sm font-medium text-[#1a2c24]">{label}</p>
           </div>
           {hint && <p className="mt-1 text-xs text-[#4a5e56]">{hint}</p>}
         </div>
-        <p className="text-sm font-semibold text-[#152820]">{value}</p>
+        <p className="shrink-0 text-sm font-semibold text-[#152820]">{value}</p>
       </div>
       <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#e4ece7]">
         <AnimatedBar percentage={percentage} className={cx('h-full rounded-full', barClass)} />

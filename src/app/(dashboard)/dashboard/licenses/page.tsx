@@ -36,6 +36,11 @@ import {
   Receipt,
 } from 'lucide-react'
 
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+}
+
 interface ProviderSummary {
   provider: string
   billingBasis?: 'seat' | 'usage'
@@ -221,7 +226,7 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
       <div className="space-y-5">
         <DashboardHeader
           title="Licenses and API billing"
-          subtitle={`${company!.name} · ${report.reporting_period}. Keep seat-license utilization separate from report-period API billing so the portfolio math stays comparable.`}
+          subtitle={`${company!.name} · ${formatPeriodMonth(report.reporting_period)}. Keep seat-license utilization separate from report-period API billing so the portfolio math stays comparable.`}
           badge={<DashboardMetaPill>{providers.length > 0 ? `${providers.length} providers modeled` : 'Awaiting billing detail'}</DashboardMetaPill>}
           actions={<RerunAnalysisButton initialJobState={analysisJob} />}
         />
@@ -242,8 +247,8 @@ export default async function LicensesPage({ searchParams }: LicensesPageProps) 
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((item) => item.id !== report.id).map((item) => ({ label: item.reporting_period, value: item.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((item) => ({ label: formatPeriodMonth(item.reporting_period), value: item.id })),
               ]}
             />
             <DashboardFilterPill

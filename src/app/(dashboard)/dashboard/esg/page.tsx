@@ -33,6 +33,11 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+function formatPeriodMonth(period: string): string {
+  const [year, month] = period.split("-").map(Number)
+  return new Date(year, month - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" })
+}
+
 interface ESGPageProps {
   searchParams?: Promise<{ reportId?: string }>
 }
@@ -85,7 +90,7 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
       <div className="space-y-5">
         <DashboardHeader
           title="AI environmental disclosure"
-          subtitle={`${company?.name} · Reporting period ${esg?.reporting_period ?? report.reporting_period}. Prepare a disclosure-ready ESG narrative for AI usage and efficiency.`}
+          subtitle={`${company?.name} · ${formatPeriodMonth(esg?.reporting_period ?? report.reporting_period)}. Prepare a disclosure-ready ESG narrative for AI usage and efficiency.`}
           badge={<DashboardMetaPill>{dataFreshness ? `Data through ${dataFreshness}` : 'Freshness pending'}</DashboardMetaPill>}
           actions={(
             <div className="flex items-center gap-3">
@@ -102,8 +107,8 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
               paramKey="reportId"
               value={requestedReportId ?? 'all'}
               options={[
-                { label: `${report.reporting_period} (latest)`, value: 'all' },
-                ...availableReports.filter((r) => r.id !== report.id).map((r) => ({ label: r.reporting_period, value: r.id })),
+                { label: `${formatPeriodMonth(availableReports[0].reporting_period)} (Current)`, value: 'all' },
+                ...availableReports.slice(1).map((r) => ({ label: formatPeriodMonth(r.reporting_period), value: r.id })),
               ]}
             />
             <DashboardFilterPill label="Disclosure State" value={esgAvailable ? 'Disclosure Ready' : 'Partial Report'} />
@@ -173,11 +178,11 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
               <div className="flex items-center justify-between border-b border-[#e6efe9] px-5 py-3">
                 <div className="flex items-center gap-2">
                   <FileText className="h-3.5 w-3.5 text-[#38b76a]" />
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3d6454]">
+                  <span className="text-xs font-semibold uppercase tracking-[0.13em] text-[#3d6454]">
                     ESG Disclosure — {esg?.reporting_period ?? report.reporting_period}
                   </span>
                 </div>
-                <span className="rounded-full bg-[#eaf7ee] px-2.5 py-0.5 text-[10px] font-semibold text-[#1e7d45]">
+                <span className="rounded-full bg-[#eaf7ee] px-2.5 py-0.5 text-xs font-semibold text-[#1e7d45]">
                   {esgAvailable ? 'Disclosure ready' : 'Draft'}
                 </span>
               </div>
@@ -232,7 +237,7 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#e8f5ee] text-[#38b76a]">
                     <Database className="h-3.5 w-3.5" />
                   </span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4a6459]">Model usage data</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#4a6459]">Model usage data</p>
                 </div>
                 <p className="text-sm leading-6 text-[#2e4a40]">
                   Usage data is collected via provider admin APIs and returns organizational usage metrics such as model identifiers,
@@ -244,7 +249,7 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#e8f5ee] text-[#38b76a]">
                     <Leaf className="h-3.5 w-3.5" />
                   </span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4a6459]">Carbon methodology</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#4a6459]">Carbon methodology</p>
                 </div>
                 <p className="text-sm leading-6 text-[#2e4a40]">
                   {esg?.carbon_methodology ??
@@ -256,7 +261,7 @@ export default async function ESGPage({ searchParams }: ESGPageProps) {
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#deeef9] text-[#2f7fc4]">
                     <Droplets className="h-3.5 w-3.5" />
                   </span>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#4a6459]">Water methodology</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.13em] text-[#4a6459]">Water methodology</p>
                 </div>
                 <p className="text-sm leading-6 text-[#2e4a40]">
                   {esg?.water_methodology ??
